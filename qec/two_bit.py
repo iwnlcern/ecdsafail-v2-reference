@@ -402,6 +402,7 @@ class TwoBitMod(Mod):
         """One tick of a swept tape. prev is the cell before, or None on the first tick.
         nxt is the next cell's g0 wire, or None on the last tick, whose B1 reduces normally."""
         n, f, w = self.n, self.f, self.window
+        tick_start = len(C.prims)
         g0, b = g
         (spill, high) = C.alloc(2)
         word = s + [spill, high]
@@ -558,5 +559,31 @@ class TwoBitMod(Mod):
         C.ccx(g0, a[0], l0)
         C.free([l0, spill, high])
         s[:] = s[-1:] + s[:-1]
-        cswap(C, sw, a, s)
+        # Reuse only this tick's clean scratch, keeping its recorded arity fixed.
+        touched = set(C.prims[tick_start + 1::4])
+        touched.update(C.prims[tick_start + 2::4])
+        touched.update(C.prims[tick_start + 3::4])
+        saved_free = list(C.free_stack)
+        copies = sorted(touched.intersection(saved_free))
+        C.free_stack[:] = [wire for wire in saved_free if wire not in copies]
+        sources, tree = [sw], []
+        filled = 0
+        while filled < len(copies):
+            layer = []
+            for source in sources:
+                if filled == len(copies):
+                    break
+                target = copies[filled]
+                filled += 1
+                C.cx(source, target)
+                tree.append((source, target))
+                layer.append(target)
+            sources.extend(layer)
+        for j, (u, v) in enumerate(zip(a, s)):
+            C.cx(v, u)
+            C.ccx(sources[j * len(sources) // n], u, v)
+            C.cx(v, u)
+        for source, target in reversed(tree):
+            C.cx(source, target)
+        C.free_stack[:] = saved_free
         self._end(C, g0, b, sw)

@@ -62,9 +62,9 @@ Python is stdlib only. The harness is a Rust crate whose dependencies are path r
 All numbers are measured unless marked as estimates.
 
 **This branch.**
-At G the circuit is 1,246 wires, 3,299,923 CCX, 23,099,461 T and 12,138,599 expanded ops.
-The scheduled depth is 34,236,374 ticks, giving qubit-time 42,658,522,004; wires × CCX is 4,111,704,058.
-The hierarchical JSON for G is 39,150,695 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
+At G the circuit is 1,246 wires, 3,299,923 CCX, 23,099,461 T and 12,165,739 expanded ops.
+The scheduled depth is 32,844,905 ticks, giving qubit-time 40,924,751,630; wires × CCX is 4,111,704,058.
+The hierarchical JSON for G is 39,156,155 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
 Two named limits apply.
 `I2.model`'s zero-caller row is narrowed from the reference's gate.
 The standalone multiplier is restricted to x in [1, q), and nonzero x at its entries rests on the kernel's flag code and the non-full build refusal.
