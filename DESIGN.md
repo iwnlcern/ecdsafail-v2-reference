@@ -528,3 +528,12 @@ It then gives each CCX the control order its own standalone forward and inverse 
 It reads definition bodies only, so definitions stay identical over addends, and a second application returns its input.
 The flat branch never changes, so `check_hier.py` checks the builder with `depth_pass=False`, and `receipts/baseline/flat_ops.sha256` does not move.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 28,414,321 scheduled ticks and 11,895,943 expanded operations.
+### Increment prefix before uncompute
+
+Prefix.write increments each bit on x XOR p times not-below before uncomputing its AND chain.
+The uncompute is unchanged because below times (x XOR p times not-below) equals below times x.
+The remaining CX from p to each bit waits until the block's last bit, so the carry chain contains only the uncompute CCX.
+The first two bits take the same form with t, and every Prefix.write caller uses this identity, including the square.
+CCX, T and wires are unchanged; the extra X and CX gates trade operation count for shorter depth.
+
+At G this step retains 1,246 wires and 3,299,923 CCX, with 26,874,637 scheduled ticks and 12,427,531 expanded operations.
