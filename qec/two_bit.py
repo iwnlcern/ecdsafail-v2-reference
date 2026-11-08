@@ -535,6 +535,7 @@ class TwoBitMod(Mod):
             C.x(k0)
             C.cx(k2, g0)
 
+        compare_start = len(C.prims)
         (z,) = C.alloc(1)
         mark_even(z)
         # sw before the compare, on a wire whose last use is early, so the swap's copies are ready as the
@@ -577,21 +578,19 @@ class TwoBitMod(Mod):
         touched.update(C.prims[tick_start + 2::4])
         touched.update(C.prims[tick_start + 3::4])
         saved_free = list(C.free_stack)
-        copies = sorted(touched.intersection(saved_free))
+        # Only scratch untouched since the compare began: a wire freed after it would hold its swaps until
+        # the compare ends, and in the inverse hold the compare's start until they are done.
+        late = set(C.prims[compare_start + 1::4])
+        late.update(C.prims[compare_start + 2::4])
+        late.update(C.prims[compare_start + 3::4])
+        copies = sorted(touched.intersection(saved_free) - late)
         C.free_stack[:] = [wire for wire in saved_free if wire not in copies]
-        sources, tree = [sw], []
-        filled = 0
-        while filled < len(copies):
-            layer = []
-            for source in sources:
-                if filled == len(copies):
-                    break
-                target = copies[filled]
-                filled += 1
-                C.cx(source, target)
-                tree.append((source, target))
-                layer.append(target)
-            sources.extend(layer)
+        # A star from sw onto the copies, and only the copies control swaps, so no wire both fans sw onward
+        # and controls a swap.
+        tree = [(sw, c) for c in copies]
+        for source, target in tree:
+            C.cx(source, target)
+        sources = copies or [sw]
         for j, (u, v) in enumerate(zip(a, s)):
             C.cx(v, u)
             C.ccx(sources[j * len(sources) // n], u, v)

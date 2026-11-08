@@ -503,6 +503,8 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 34,236,374 scheduled 
 
 ### Parallel final coefficient swap
 
+The tree fan-out described in this section is superseded below by independent star copies; the free-wire and allocator restoration contracts remain the same.
+
 The final coefficient swap copies its control through a breadth-first CX tree onto scratch wires already touched and freed by that tick.
 The free-wire contract makes those copies equal to the control, and the reverse tree clears them after the swap while restoring the allocator stack exactly.
 Using only the tick's own wires preserves its arity and peak space, while distributing the swap controls reduces scheduled depth without adding CCX gates.
@@ -552,3 +554,8 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 26,270,360 scheduled 
 
 Prepare the second sw immediately after the first mark_even, before the compare. Intervening gates preserve g0 and b, so the same control is ready without waiting for the compare to release p's wire.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 26,170,806 scheduled ticks and 12,427,531 expanded operations.
+
+### Independent swap-control copies
+
+Fan sw directly onto a star of scratch wires untouched since the compare began, and let only these copies control the coefficient swaps. Reverse the fan afterward and restore the free stack. This removes the serial tail formed when tree nodes both forwarded the control and controlled their own swap runs.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 25,875,672 scheduled ticks and 12,418,343 expanded operations.
