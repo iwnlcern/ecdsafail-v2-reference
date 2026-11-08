@@ -429,7 +429,6 @@ class TwoBitMod(Mod):
         if p is not None:
             for x in word:
                 C.cx(p, x)
-        self._drop_after_b1(C, prev, p)
         (l0,) = C.alloc(1)
         C.ccx(g0, a[0], l0)
         low = [l0] + word[:n - 1]
@@ -450,6 +449,8 @@ class TwoBitMod(Mod):
             C.x(one)
         ra, rb = self.run
         P, M = Prefix(C, H), Prefix(C, L[ra:rb])
+        # p is released only here, so the Prefix scratch above takes no wire the add uses at its bottom bit.
+        self._drop_after_b1(C, prev, p)
         # Only M's skip reads M before its write, so the top below its last is cleared until then.
         M.release()
 

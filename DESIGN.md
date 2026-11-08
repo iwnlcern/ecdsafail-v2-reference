@@ -542,3 +542,8 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 26,874,637 scheduled 
 
 The Euclid sweep holds three pairs of clean wires and cycles them through the in-loop block encodes. Each pair is freed immediately before the encode and taken back afterward, so the last-in first-out allocator supplies exactly that pair; an assertion checks its identity. All pairs are released after the sweep. The held block-zero encode stays outside the pass and uses the ordinary free stack.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 26,836,375 scheduled ticks and 12,427,531 expanded operations.
+
+### Prefix initialization scratch
+
+Release p after both Prefix initializations, so their scratch avoids the add's rolling-XOR wire and its last-bit dependency. Nothing between these positions reads or writes p or prev.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 26,270,360 scheduled ticks and 12,427,531 expanded operations.
