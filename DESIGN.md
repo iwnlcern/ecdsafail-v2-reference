@@ -537,3 +537,8 @@ The first two bits take the same form with t, and every Prefix.write caller uses
 CCX, T and wires are unchanged; the extra X and CX gates trade operation count for shorter depth.
 
 At G this step retains 1,246 wires and 3,299,923 CCX, with 26,874,637 scheduled ticks and 12,427,531 expanded operations.
+
+### Pooled block-encode ancillas
+
+The Euclid sweep holds three pairs of clean wires and cycles them through the in-loop block encodes. Each pair is freed immediately before the encode and taken back afterward, so the last-in first-out allocator supplies exactly that pair; an assertion checks its identity. All pairs are released after the sweep. The held block-zero encode stays outside the pass and uses the ordinary free stack.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 26,836,375 scheduled ticks and 12,427,531 expanded operations.

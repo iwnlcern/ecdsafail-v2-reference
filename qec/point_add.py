@@ -10,6 +10,10 @@ from .model import tick_bound, tick_widths
 from . import block0_code, tail_code, tape_block
 from .tape_block import FREE, TICKS
 
+# Pairs of clean wires the Euclid pass's block encodes take their ancillas from in turn, so that an
+# encode need not wait for the one before it to release the same two wires.
+ENCODE_PAIRS = 3
+
 
 def _fanout(C, src, copies):
     have, todo = [src], list(copies)
@@ -340,6 +344,7 @@ class DialogMultiplier:
         if swept and T >= 2:
             (both,) = self.C.alloc(1)
             mark(T - 2 if late else T - 1)
+        anc = self.C.alloc(2 * min(ENCODE_PAIRS, self.blocks))
         for i in range(T - 1, -1, -1):
             g0, b = G[2 * i], G[2 * i + 1]
             if i == 0 or i == T - 1:
@@ -365,7 +370,14 @@ class DialogMultiplier:
                     mark(1)
             done = i + 1 if swept else i
             if done % TICKS == 0 and done // TICKS < self.blocks:
+                # Freed just before the encode, the pair is what its two ancillas are allocated
+                # from, and it is the pair the encode frees again.
+                pair, anc = anc[:2], anc[2:]
+                self.C.free(pair)
                 clean.extend(self._encode(G, done // TICKS, swept))
+                assert self.C.alloc(2) == pair
+                anc += pair
+        self.C.free(anc)
         if both is not None:
             self.C.free([both])
         self.C.free(E)

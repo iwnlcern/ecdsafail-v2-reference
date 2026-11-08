@@ -63,8 +63,8 @@ All numbers are measured unless marked as estimates.
 
 **This branch.**
 At G the circuit is 1,246 wires, 3,299,923 CCX, 23,099,461 T and 12,427,531 expanded ops.
-The scheduled depth is 26,874,637 ticks, giving qubit-time 33,485,797,702; wires × CCX is 4,111,704,058.
-The hierarchical JSON for G is 39,081,582 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
+The scheduled depth is 26,836,375 ticks, giving qubit-time 33,438,123,250; wires × CCX is 4,111,704,058.
+The hierarchical JSON for G is 39,081,622 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
 Two named limits apply.
 `I2.model`'s zero-caller row is narrowed from the reference's gate.
 The standalone multiplier is restricted to x in [1, q), and nonzero x at its entries rests on the kernel's flag code and the non-full build refusal.
