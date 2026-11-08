@@ -507,3 +507,15 @@ The final coefficient swap copies its control through a breadth-first CX tree on
 The free-wire contract makes those copies equal to the control, and the reverse tree clears them after the swap while restoring the allocator stack exactly.
 Using only the tick's own wires preserves its arity and peak space, while distributing the swap controls reduces scheduled depth without adding CCX gates.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 32,844,905 scheduled ticks and 12,165,739 expanded operations.
+
+## Euclid unwind and parallel rotation
+
+The unwind replaces `c ^= a; v ^= a; v ^= c` with `v ^= c; c ^= a`, an identity on every bit state.
+The complemented-control select `X(v); CCX(g1, v, a); X(v)` becomes `CCX(g1, v, a); CX(g1, a)`, while the empty X pair at bit zero disappears.
+Each final `CX(g1, V[i])` moves into its unwind bit, across operations that neither write g1 nor change V[i] except by X.
+The conditional left rotation reverses the whole word and then all but its last bit, giving two layers of disjoint swaps with the same number of CCX gates.
+A reversible CX tree copies the rotation control onto available clean tape wires and uncomputes those copies after both layers.
+The pass supplies at most `(w - 1) // 2 - 1` copies from its unused, vacated or lent clean wires; sharing fewer copies round-robin preserves the same permutation.
+The zero-copy case retains the original step shape and serial rotation, including the smallest widths.
+Under top_clear the lifted bit and V[w - 2] are both zero when two is set, so the strip rotates V[:w - 2] with the same permutation and swap count as the shortened serial strip.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 31,562,689 scheduled ticks and 11,895,943 expanded operations.
