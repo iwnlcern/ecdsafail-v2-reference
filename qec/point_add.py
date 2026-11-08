@@ -260,7 +260,10 @@ class DialogMultiplier:
             else:
                 # A tick leaves V below 2^(w' - 1), w' its own width.
                 top_clear = i >= 1 and w >= 3 and self.widths[i - 1] == w
+                # Alternate clean scratch so adjacent carry and strip sweeps can overlap.
+                hold = self.C.alloc(1) if i % 2 else []
                 self.C.apply(self._euclid_step(w, top_clear), [U[:w], V, E, cell])
+                self.C.free(hold)
             G.extend(cell)
             next_width = self.widths[i + 1] if i + 1 < self.iters else self.pass_tail_width
             assert w - 1 <= next_width <= w

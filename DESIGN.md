@@ -493,3 +493,10 @@ After the initial flag CX gates, the c = 0 words are 0000, 0110 and 0101.
 None has f0 = 0 and f1 = 1, so f0 XOR f1 equals f0 AND NOT f1 on that domain.
 The recode toggles gen with NOT c AND (f0 XOR f1), temporarily forming and restoring the XOR.
 This uses one CCX without a temporary, saving eight CCX across the four recodes.
+
+## Euclid scratch scheduling
+
+On odd Euclid ticks, the pass holds the most recently freed wire around the general step call, then returns it.
+Each step takes clean scratch and restores it to zero, so selecting another clean wire preserves the step function and its inverse on the same reachable domain.
+Alternating scratch lets the next carry sweep overlap the previous strip sweep without changing the arithmetic or allocator.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 34,236,374 scheduled ticks and 12,138,599 expanded operations.
