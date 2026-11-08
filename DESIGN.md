@@ -519,3 +519,12 @@ The pass supplies at most `(w - 1) // 2 - 1` copies from its unused, vacated or 
 The zero-copy case retains the original step shape and serial rotation, including the smallest widths.
 Under top_clear the lifted bit and V[w - 2] are both zero when two is set, so the strip rotates V[:w - 2] with the same permutation and swap count as the shortened serial strip.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 31,562,689 scheduled ticks and 11,895,943 expanded operations.
+
+## Depth pass
+
+`write_circuit` runs `qec/depth_pass.py` on the hierarchical branch after the definition ids are fixed.
+Per definition, in emission order, it sorts each CCX's controls, list-schedules the definition's commutation DAG forward and backward under the board's lowering, and keeps the input unless a schedule has fewer standalone forward plus inverse ticks.
+It then gives each CCX the control order its own standalone forward and inverse runs prefer.
+It reads definition bodies only, so definitions stay identical over addends, and a second application returns its input.
+The flat branch never changes, so `check_hier.py` checks the builder with `depth_pass=False`, and `receipts/baseline/flat_ops.sha256` does not move.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 28,414,321 scheduled ticks and 11,895,943 expanded operations.
