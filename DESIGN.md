@@ -547,3 +547,8 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 26,836,375 scheduled 
 
 Release p after both Prefix initializations, so their scratch avoids the add's rolling-XOR wire and its last-bit dependency. Nothing between these positions reads or writes p or prev.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 26,270,360 scheduled ticks and 12,427,531 expanded operations.
+
+### Early coefficient-swap control
+
+Prepare the second sw immediately after the first mark_even, before the compare. Intervening gates preserve g0 and b, so the same control is ready without waiting for the compare to release p's wire.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 26,170,806 scheduled ticks and 12,427,531 expanded operations.

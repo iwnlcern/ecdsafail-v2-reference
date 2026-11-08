@@ -537,6 +537,9 @@ class TwoBitMod(Mod):
 
         (z,) = C.alloc(1)
         mark_even(z)
+        # sw before the compare, on a wire whose last use is early, so the swap's copies are ready as the
+        # compare frees each bit.
+        sw = self._begin(C, g0, b)
         gt_into(C, a[1:], low[1:], k1, ctrl=z)
         mark_even(z)
         C.free([z])
@@ -555,7 +558,6 @@ class TwoBitMod(Mod):
             bit_one(m)
             C.free([m])
         self._drop_after_b1(C, prev, p)
-        sw = self._begin(C, g0, b)
         C.ccx(b, low[1], k1)
         if f >> 1 & 1:
             C.ccx(b, k0, k1)
