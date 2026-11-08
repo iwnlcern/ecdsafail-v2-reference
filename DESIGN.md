@@ -512,6 +512,8 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 32,844,905 scheduled 
 
 ## Euclid unwind and parallel rotation
 
+The unwind schedule described in this section is superseded below by selects outside the carry chain; its parallel rotation and repeated-width composition remain unchanged.
+
 The unwind replaces `c ^= a; v ^= a; v ^= c` with `v ^= c; c ^= a`, an identity on every bit state.
 The complemented-control select `X(v); CCX(g1, v, a); X(v)` becomes `CCX(g1, v, a); CX(g1, a)`, while the empty X pair at bit zero disappears.
 Each final `CX(g1, V[i])` moves into its unwind bit, across operations that neither write g1 nor change V[i] except by X.
@@ -559,3 +561,8 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 26,170,806 scheduled 
 
 Fan sw directly onto a star of scratch wires untouched since the compare began, and let only these copies control the coefficient swaps. Reverse the fan afterward and restore the free stack. This removes the serial tail formed when tree nodes both forwarded the control and controlled their own swap runs.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 25,875,672 scheduled ticks and 12,418,343 expanded operations.
+
+## Selects outside the Euclid carry chain
+
+For each bit above zero, let S = carries[i] = c_i XOR a_i, B = V[i] = p, and A = U[i]. Before the carry reaches the bit, set S XOR= g1 AND B and B XOR= g0 AND NOT S. The restore A XOR= S AND B and chain CX S XOR= A then leave A = a_i XOR (g1 AND p) and S = c_i. Since S AND NOT S is zero, the early second select cannot change the restore product. After the chain, apply B XOR= A, A XOR= g1, B XOR= g0 and B XOR= g1. These recover the original selected outputs with the same three CCX per bit. Bit zero and the compare remain unchanged. As before, the argument requires g1 implies g0, established by a clean b before the compare.
+At G this step retains 1,246 wires and 3,299,923 CCX, with 20,460,644 scheduled ticks and 12,940,583 expanded operations.

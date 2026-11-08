@@ -184,22 +184,30 @@ class DialogMultiplier:
             else:
                 _maj(C, carries[i], V[i], U[i])
         C.ccx(g0, U[-1], g1)
+        # Each bit's selects go in before the chain reaches it. With S = carries[i] and B = V[i]:
+        # S ^= g1*B puts g1*p on the restore's control, B ^= g0*not(S) keeps the restore's
+        # product at S*p ^ g1*p (S*not(S) = 0), and the chain's CX cancels g1*p from the carry.
+        for i in reversed(range(1, len(U))):
+            C.ccx(g1, V[i], carries[i])
+            C.x(carries[i])
+            C.ccx(g0, carries[i], V[i])
+            C.x(carries[i])
         for i in reversed(range(len(U))):
-            # Restore a_i and select S_i while unwinding the carry chain.
+            # Restore a_i (a_i ^ g1*p_i above bit 0) while unwinding the carry chain.
             if i == 0:
                 C.cx(V[i], U[i])
                 C.cx(g0, V[i])
+                C.cx(carries[i], V[i])
+                C.cx(U[i], carries[i])
+                C.cx(carries[i], V[i])
             else:
                 C.ccx(carries[i], V[i], U[i])
-                C.ccx(g0, carries[i], V[i])
-            C.cx(carries[i], V[i])
-            C.cx(U[i], carries[i])
-            if i != 0:
-                C.ccx(g1, V[i], U[i])
-                C.cx(g1, U[i])
-            C.cx(carries[i], V[i])
-            if i != 0:
-                C.cx(g1, V[i])
+                C.cx(U[i], carries[i])
+        for i in range(1, len(U)):
+            C.cx(U[i], V[i])
+            C.cx(g1, U[i])
+            C.cx(g0, V[i])
+            C.cx(g1, V[i])
         C.free([cin])
         for wire in V:
             C.x(wire)
