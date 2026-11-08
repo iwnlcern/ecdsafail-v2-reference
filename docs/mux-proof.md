@@ -107,7 +107,7 @@ Write k = k₀ + 2k₁ + 4k₂, on wires k0, k1, k2.
 S₀ = V₀ ⊕ k₀ on every lane, since f is odd, so the cell does not write bit 0 and `cx(l0, k0)` turns k0 into S₀.
 
 - **Plain add.** V = 2T + R < 3q, so k ≤ 2, and k₂ = 0. Odd k is k = 1. For even k, k = 2 exactly when R >> 1 > S >> 1, because S and R agree on bit 0 and k = 0 gives S ≥ R while k = 2 gives S = R − 2(q − T) < R.
-- **Held.** S ≡ R + kf mod 4, because 4T ≡ 0 and q ≡ −f. So k₁ = S₁ ⊕ R₁ ⊕ k₀R₀ ⊕ (f₁ · k₀), where f₁ is bit 1 of f. If k₀ = k₁ = 0 then k is 0 or 4, and k = 4 exactly when R >> 1 > S >> 1, by the same argument with S = R − 4(q − T) < R. There is no offset of f.
+- **Held.** S ≡ R + kf mod 4, because 4T ≡ 0 and q ≡ −f. So k₁ = S₁ ⊕ R₁ ⊕ k₀R₀ ⊕ (f₁ · k₀), where f₁ is bit 1 of f. The k₀R₀ term is read from the kept bottom carry c1 = l0 · k0, since l0 = R0 on the held lane; c1 is cleared and freed after this read. If k₀ = k₁ = 0 then k is 0 or 4, and k = 4 exactly when R >> 1 > S >> 1, by the same argument with S = R − 4(q − T) < R. There is no offset of f.
 - **J.** S ≡ kf mod 4, as today.
 
 On a held lane `cswap(p, k1, k2)` first exchanges the two wires, so the compare's target carries k₂, and wire k2 carries k₁.

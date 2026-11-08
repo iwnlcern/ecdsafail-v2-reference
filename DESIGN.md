@@ -16,6 +16,9 @@ The corrected S13 distinguishes logical carries from physical borrowed first-pro
 
 The exact-source independent review covers this pair contract; it does not grant upstream checker acceptance. The local held secp BDD probe stopped at the production 4,194,304-node budget. The earlier cell's cap-transfer proof does not automatically transfer. I7.charge, qualification, and the flat-upload operation cap remain open limits.
 
+The second chain's corner selector uses [k = 3] = [K = 3] XOR (e AND k1), with k1 read before its update, reusing the first chain's selector.
+The second chain keeps its bottom carry c1 = l0 AND k0 through the compare; on a held lane l0 = R0, so S7 reads k0 AND R0 from c1 before that carry is cleared and freed.
+
 ## Clean wires in the mux tick
 
 Before these changes the mux tick held the circuit's peak at 1,275 wires, with 26 clean, while Euclid, the code calls and the B1 step peaked at 1,249.
