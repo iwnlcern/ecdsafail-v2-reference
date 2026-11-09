@@ -598,3 +598,13 @@ The ring holds the sweep's temps and the copies of g0 and g1, so a wider ring ke
 Steps whose free tape is narrower than the ring take what is there, as before.
 At G the circuit is 1,249 wires × 6,268,410 ticks, 6,951,555 CCX and T 48,660,885: 44,332 fewer ticks and 137,360 fewer CCX than blocks of two on the 193-wire ring.
 The extra step shapes make the hierarchical JSON 84,351,800 bytes, under the 104,857,600-byte upload cap.
+
+## Rotating ancillas for the Euclid pass's block encodes
+
+Each block encode in the Euclid pass's sweep-down takes two ancillas.
+From the free stack, each encode got the two wires the encode before it had just freed, so it waited for that encode to finish with them.
+The encodes now take their ancillas in turn from six pairs of fresh wires (`EUCLID_ENCODE_PAIRS`, `_encode_from` in `qec/point_add.py`), held from the first encode to the pass's end and then freed.
+Block zero's encode on the swept path keeps its own wires.
+Each encode leaves its ancillas clean, as before, so the pairs are clean whenever they are taken, and an encode now waits only on the encode six before it.
+The gates are the same, on other wires.
+At G the circuit is 1,249 wires × 6,229,236 ticks, 6,951,555 CCX and T 48,660,885: 39,174 fewer ticks at the same CCX.

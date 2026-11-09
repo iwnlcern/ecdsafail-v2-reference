@@ -151,6 +151,8 @@ def shared_difference_u1(C, U, V, g0, g1, ring):
 
 
 U6_RING = 257
+# Pairs of wires the Euclid pass's block encodes take their two ancillas from in turn (block zero's aside).
+EUCLID_ENCODE_PAIRS = 6
 
 
 def ring_layout_u6(n):
@@ -337,6 +339,25 @@ class DialogMultiplier:
             G[slot] = None
         return wires
 
+    def _encode_from(self, pairs, G, j, swept):
+        """_encode with the encoder's two ancillas taken from the front pair of `pairs`, which then moves to the back.
+        `pairs` starts empty; the first call fills it with EUCLID_ENCODE_PAIRS pairs of fresh wires, which the caller
+        holds to its end and frees. The ancillas are clean before and after each encode, so the pairs stay clean, and
+        an encode never waits on the wires the encode before it has just freed."""
+        C = self.C
+        if not pairs:
+            saved, C.free_stack = C.free_stack, []
+            pairs += C.alloc(2 * EUCLID_ENCODE_PAIRS)
+            C.free_stack = saved
+        pair = pairs[:2]
+        del pairs[:2]
+        C.free_stack.extend(reversed(pair))
+        wires = self._encode(G, j, swept)
+        assert C.free_stack[-2:] == pair[::-1], (C.free_stack[-2:], pair)
+        del C.free_stack[-2:]
+        pairs += pair
+        return wires
+
     def _decode(self, G, j, wires, swept):
         assert len(wires) == len(self._block_free(j, swept))
         for slot, wire in zip(self._free_slots(j, swept), wires):
@@ -495,7 +516,7 @@ class DialogMultiplier:
         # no-subtract tick alone. On the merged path the B1 sweep follows one cell behind it,
         # so a block is coded only after the B1 step that reads its bottom cell.
         T, swept, clean = self.iters, self.swept, []
-        both = None
+        both, pairs = None, []
 
         def mark(k):
             self.C.x(G[2 * k])
@@ -523,7 +544,7 @@ class DialogMultiplier:
                     mark(1)
             done = i + 1 if swept else i
             if done % TICKS == 0 and done // TICKS < self.blocks:
-                clean.extend(self._encode(G, done // TICKS, swept))
+                clean.extend(self._encode_from(pairs, G, done // TICKS, swept))
         if both is not None:
             self.C.free([both])
         if swept and self.blocks:
@@ -532,6 +553,8 @@ class DialogMultiplier:
         zeros = V + clean
         U[:] = U[:n - self.u_lent] + zeros[:self.u_lent]
         pool[:] = zeros[self.u_lent:] + [w for w in G if w is not None]
+        if pairs:
+            self.C.free(pairs)
 
     def _bezout(self):
         if self._bezout_step is None:
