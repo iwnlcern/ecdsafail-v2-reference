@@ -608,3 +608,14 @@ Block zero's encode on the swept path keeps its own wires.
 Each encode leaves its ancillas clean, as before, so the pairs are clean whenever they are taken, and an encode now waits only on the encode six before it.
 The gates are the same, on other wires.
 At G the circuit is 1,249 wires × 6,229,236 ticks, 6,951,555 CCX and T 48,660,885: 39,174 fewer ticks at the same CCX.
+
+## Lookahead adds in the square's fold
+
+The square's rows already add in lookahead form, but its fold rippled four long adds with the CDKM adder: hi += ~Y, the two multiples that fold hi into lo + E and E into T, and T into lo's low bits with the carry out into t.
+Each now runs as `add_lookahead` on 72 clean temps (`FOLD_TEMPS` in `qec/square.py`), which `compute` takes after the rows and frees clean before the Prefix steps.
+`add_lookahead` gains two options for this: no carry out (b += a mod 2^w), and the caller's carry-in wire, restored, as `add` has; the multiple's low digit uses the carry-in to hold the fold's + 1.
+`sub_lookahead` subtracts by `add_lookahead` on ~b.
+Every other gate of the square is unchanged.
+On its own at secp256k1 in program order, the square-subtract goes from 422,759 ticks and 445,683 CCX to 348,204 ticks and 464,651 CCX, and from 1,167 to 1,232 wires, under the point add's peak.
+`I2.fold` (`scripts/square_la_check.py`) checks the add on every input at widths 1 to 7 in every carry mode and the square-subtract at five primes up to secp256k1, and five controls that drop a carry-in or a carry-out must fail.
+At G the circuit is 1,249 wires × 6,154,163 ticks, 6,970,523 CCX and T 48,793,661: 75,073 fewer ticks for 18,968 more CCX.

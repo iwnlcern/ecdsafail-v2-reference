@@ -46,7 +46,8 @@ REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
-            "pass_instances": 2}
+            "pass_instances": 2,
+            "fold_rows": 11, "fold_add_lanes": 131_064, "fold_lanes": 145_902, "fold_controls": 5}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -185,6 +186,7 @@ class Run:
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
+            "fold": [["square_la_check.py", "--out", w / "square_la_check.json"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
@@ -420,6 +422,27 @@ def i2_mutation(run):
     return Result(FAIL if problems or caught < need else PASS, note, evidence)
 
 
+def i2_fold(run):
+    p, = run.procs("fold")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"square_la_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"square_la_check.py printed no summary, see {p.log}")
+    else:
+        problems += [f"failing rows: {summary['failed']}"] * bool(summary["failed"])
+        problems += coverage("rows", summary["rows"], "fold_rows")
+        problems += coverage("add lanes", summary["add_lanes"], "fold_add_lanes")
+        problems += coverage("square-subtract lanes", sum(summary["fold_lanes"].values()), "fold_lanes")
+        problems += coverage("controls", summary["controls"], "fold_controls")
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"add_lookahead on every input at widths 1 to 7 with and without carry-in and carry-out "
+                        f"({summary['add_lanes']:,} lanes); the square-subtract at five primes up to secp256k1 "
+                        f"({sum(summary['fold_lanes'].values()):,} lanes); {summary['controls']} controls fail", evidence)
+
+
 def i2_secp(run):
     procs, rows = run.secp_hier()
     lanes = 2 * (COVERAGE["secp_special_points"] + run.secp_points)
@@ -594,6 +617,7 @@ CHECKS = (
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
+    Check("I2.fold", "exactness: the square fold's lookahead adds, at small primes and at full width", i2_fold, ("fold",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,

@@ -251,16 +251,19 @@ def lookahead_sweep(C, U, V, temps):
     lookahead_chain(C, U, V, temps, lookahead_sizes(n - 1))
 
 
-def add_lookahead(C, a, b, cout, temps):
-    """b += a mod 2^w and cout ^= the carry out, as add, with both sweeps in lookahead form.
+def add_lookahead(C, a, b, cout, temps, cin=None):
+    """b += a (+ cin) mod 2^w and cout ^= the carry out, as add, with both sweeps in lookahead form.
     The up-sweep leaves add's state after its last _maj (b_i = p_i, the carry wire c_0 ^ a_0,
     a_i = c_(i+1) ^ a_(i+1), a_(w-1) = c_w). The carries of a + ~s are those of a + b, so that
     state for (a, ~s) differs only on b, by b_i = ~(p_i ^ c_i ^ a_i): one CX from the wire below
     and an X a bit. The same sweep run backwards then leaves (a, ~s). Temps: clean wires, any
-    number, left clean."""
+    number, left clean. cout None: no carry out, b += a mod 2^w. cin: the caller's carry-in wire,
+    holding 0 or 1 and restored, as add's cin; without it the carry in is a fresh clean wire."""
     w = len(a)
     assert len(b) == w and w >= 1 and temps
-    (cin,) = C.alloc(1)
+    own = cin is None
+    if own:
+        (cin,) = C.alloc(1)
     up = _Gates()
     for i in range(w):
         up.cx(a[i], b[i])
@@ -269,7 +272,8 @@ def add_lookahead(C, a, b, cout, temps):
         up.cx(a[i + 1], a[i])
     lookahead_chain(up, [cin] + list(a), [None] + list(b), temps, lookahead_sizes(w))
     _emit(C, up.ops)
-    C.cx(a[-1], cout)
+    if cout is not None:
+        C.cx(a[-1], cout)
     C.cx(cin, b[0])
     for i in range(1, w):
         C.cx(a[i - 1], b[i])
@@ -278,7 +282,17 @@ def add_lookahead(C, a, b, cout, temps):
     _emit(C, reversed(up.ops))
     for x in b:
         C.x(x)
-    C.free([cin])
+    if own:
+        C.free([cin])
+
+
+def sub_lookahead(C, a, b, temps):
+    """b -= a mod 2^w, as sub with no borrow out, by add_lookahead on ~b."""
+    for x in b:
+        C.x(x)
+    add_lookahead(C, a, b, None, temps)
+    for x in b:
+        C.x(x)
 
 
 def sub(C, a, b, borrow=None, ctrl=None):

@@ -11,8 +11,12 @@ Q = lo + 2^n*hi, and Y - hi = D is at least 0. The rest folds 2^n to f:
 If V >= 2^n, dropping that bit subtracts q and f together and leaves V - 2^n <= f*f - 1 < q.
 Otherwise V - f < q, so subtracting f is enough. So no comparison with q is needed.
 """
-from .arith import _carries, _uncarry, add, add_const, add_lookahead, gt_into, sub
+from .arith import _carries, _uncarry, add, add_const, add_lookahead, gt_into, sub_lookahead
 from .two_bit import Prefix
+
+
+# Clean temps for the fold's lookahead adds, taken after the rows and freed clean before the Prefix steps.
+FOLD_TEMPS = 72
 
 
 def signed_digits(v):
@@ -78,8 +82,8 @@ class SquareFold:
         for i in range(1, n):
             C.cx(Y[i - 1], Y[i])
 
-    def _multiple(self, C, a, T, cin=None):
-        """T += f*a mod 2^len(T), plus 1 if cin holds 1."""
+    def _multiple(self, C, a, T, temps, cin=None):
+        """T += f*a mod 2^len(T), plus 1 if cin holds 1. Each digit adds in lookahead form on temps."""
         for s, sign in self.digits:
             target = T[s:]
             if not target:
@@ -87,9 +91,9 @@ class SquareFold:
             pad = C.alloc(max(0, len(target) - len(a)))
             b = a[:len(target)] + pad
             if sign > 0:
-                add(C, b, target, cin=cin)
+                add_lookahead(C, b, target, None, temps, cin=cin)
             else:
-                sub(C, b, target)
+                sub_lookahead(C, b, target, temps)
             C.free(pad)
             cin = None
 
@@ -101,22 +105,25 @@ class SquareFold:
         t, c, k = J[2 * n + b + m:]
         # E, T, t, c and k are clean until the rows are done
         self._rows(C, Y, lo + hi, J[2 * n:])
-        # hi = Y - hi = ~(hi + ~Y), and lo = ~lo.
+        # The fold's four long adds run in lookahead form on clean temps taken after the rows.
+        temps = C.alloc(FOLD_TEMPS)
+        # hi = Y - hi = ~(hi + ~Y), and lo = ~lo. No carry out: hi + ~Y = 2^n - 1 - (Y - hi) < 2^n.
         for w in Y:
             C.x(w)
-        add(C, Y, hi)
+        add_lookahead(C, Y, hi, None, temps)
         for w in Y:
             C.x(w)
         for w in hi + lo:
             C.x(w)
         (one,) = C.alloc(1)
         C.x(one)
-        self._multiple(C, hi, lo + E, one)
+        self._multiple(C, hi, lo + E, temps, one)
         C.x(one)
         C.free([one])
-        self._multiple(C, E, T)
+        self._multiple(C, E, T, temps)
         high = lo[m:]
-        add(C, T, lo[:m], cout=t)
+        add_lookahead(C, T, lo[:m], t, temps)
+        C.free(temps)
         if high:
             carry = Prefix(C, high)
             C.ccx(t, carry.top, c)
