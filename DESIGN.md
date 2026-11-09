@@ -645,6 +645,7 @@ ab-godder's entry runs it as a blocked-lookahead chain (`add_or_shift_la`) on 14
 This branch runs it as `add_or_shift_ours` in `qec/two_bit.py`, the form of `add_lookahead`: an up-sweep in lookahead form with blocks of up to three bits (`_block_sizes`), a middle that turns it into the up-sweep of (a, ~sum), and the same up-sweep run backwards.
 Both sweeps run on every lane, and only the middle and the last X layer are gated, by not-J, so on J the backward sweep undoes the forward one and the rotation follows.
 J's copies sit on the sweep's 19 temps while those are clean, and the chain takes its temps in turn, so a block that takes a temp an earlier block is still clearing waits for it; at G the 256-bit chain makes 166 temp uses over its 21 wires, and more temps mean fewer such waits.
-This add was built on 2026-11-08 for the `v2-depth` line, before ab-godder's entry, whose notes list blocks of three in the add as an idea it did not build.
+We built this add privately on 2026-11-08 for the `v2-depth` line, some hours before ab-godder's entry was opened, and did not publish it then.
+ab-godder's note lists blocks of three in the add among its dead ends, at about 32 more wires; this add takes its temps in turn and adds 6 wires.
 `I2.add` (`scripts/add_check.py`) runs the exhaustive check at four 14- to 17-bit primes on the tick's merged path, the 16- and 17-bit ones with blocks of three in the chain, as built and with the add's temps cut to 2, where they wrap from 15 bits, with controls that fail exactly where each feature is reached.
 At G the circuit is 1,255 wires × 5,553,352 ticks, 7,185,003 CCX and T 50,295,021: 464,463 fewer ticks for 183,840 more CCX and 6 more wires.
