@@ -569,3 +569,24 @@ On the step domain U is odd, g0 equals the low bit of V, and g1 and the ring sta
 The middle selection and reversed sweep produce the original unwind map and restore the ring before reuse.
 Smaller rings retain the existing unwind implementations; the square keeps its lookahead chain.
 The full circuit has 1,246 wires, 10,475,194 ticks, 6,336,351 CCX, T 44,354,457 and 17,125,135 operations.
+
+## Tick changes from ab-godder's entry
+
+This branch builds on ab-godder's `tick-parallel` entry (`mike/comp-ab-godder-pr8-c4994f3b4b23`), which built on the `v2-depth` entry.
+Five of its commits change the Bézout tick, and this branch keeps all five, all of them ab-godder's work:
+- the compare runs in up to 11 blocks on the tick's freed scratch, with cuts tuned to when wires come free (`0db514b`);
+- the tick's add is a blocked-lookahead chain (`510ac23`);
+- p is un-copied after the add in the order the rotation finishes the word's bits (`8cc7563`);
+- the tick's P is `PrefixR`, whose write runs its blocks in parallel (`7163a75`);
+- each Bézout tick hands its B1 mark to the next tick, and the final swap's wires come late (`6692a5e`).
+At G that entry is 1,249 wires × 6,332,334 ticks, 7,201,931 CCX and T 50,413,517.
+The sections after this one describe the changes this branch makes on top of it.
+
+## Blocks of two in the Euclid difference's sweep
+
+The Euclid difference's tree sweep (`difference_sweep` in `qec/point_add.py`) uses blocks of two bits wherever `tree_temps` at blocks of two fits the ring, and falls back to `lookahead_sweep`'s own choice, blocks of three and up, where it does not.
+A block of two has no inner product to clear and make again, so its fix is one CCX, and blocks of three spend more CCX per bit for fewer temps.
+Blocks of two hold about one temp per bit at the tree's peak, so they fit the wide early steps on the 193-wire ring and give way to blocks of three as the free tape narrows.
+At G, 195 of the Euclid step's recorded shapes sweep at blocks of two and 53 at blocks of three.
+The map is lookahead_chain's at every block size, and `lookahead_tree`'s contract at blocks of two and three was checked by simulation on bits at every n from 2 to 260, with a control that drops each block's fixes.
+At G the circuit is 1,249 wires × 6,312,742 ticks, 7,088,915 CCX and T 49,622,405: 19,592 fewer ticks and 113,016 fewer CCX than the entry above.

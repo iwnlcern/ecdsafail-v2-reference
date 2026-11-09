@@ -1,7 +1,8 @@
 """Exact, complete, controlled fixed-addend point addition:
 |c>|R>|0> -> |c>|R + c*A>|0> for every R in E(F_q) encoded as little-endian
 affine (x, y) with infinity = (0, 0)."""
-from .arith import Mod, _Gates, _emit, _maj, add_const, adjacent_xor, cswap, load_const, lookahead_sweep
+from .arith import (Mod, _Gates, _emit, _maj, add_const, adjacent_xor, cswap, load_const, lookahead_sweep,
+                    lookahead_tree, tree_temps)
 from .builder import Circuit
 from .curve import Curve
 from .square import SquareFold
@@ -181,6 +182,17 @@ def _unfan(C, src, copies):
     _emit(C, reversed(g.ops))
 
 
+def difference_sweep(C, U, V, temps):
+    """lookahead_sweep's map for the Euclid difference: lookahead_tree with blocks of 2 when tree_temps fits
+    len(temps), else lookahead_sweep's own choice. Blocks of 2 have no inner products to clear and make again, so
+    each block's fix is one CCX; they hold about len(U) temps at the tree's peak, so they fit the ring's early,
+    wide steps and give way to blocks of 3 as the ring narrows."""
+    if tree_temps(len(U), 2) <= len(temps):
+        lookahead_tree(C, U, V, temps, 2)
+    else:
+        lookahead_sweep(C, U, V, temps)
+
+
 def shared_difference_u6(C, U, V, g0, g1, ring):
     """The step's shared difference with its down-sweep as the up-sweep run backwards.
     On the step's domain (U odd, so a_0 = 1; g0 = V[0]; g1 = 0), with b' = ~b and s = a + b'
@@ -204,7 +216,7 @@ def shared_difference_u6(C, U, V, g0, g1, ring):
         up.cx(U[i], V[i])
     up.cx(U[0], cin)
     adjacent_xor(up, U)
-    lookahead_sweep(up, [cin] + list(U), [None] + list(V), list(ring))
+    difference_sweep(up, [cin] + list(U), [None] + list(V), list(ring))
     _emit(C, up.ops)
     _fan(C, g0, G0)
     C.ccx(g0, U[-1], g1)
