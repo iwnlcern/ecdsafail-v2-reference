@@ -41,7 +41,7 @@ def _block_sizes(w, top):
 
 
 def add_or_shift_ours(C, J, a, word, n, ntemps):
-    """Off J add a >> 1; on J rotate word's low n+1 bits left (fold's lookahead add, 9127ffd on the cap head).
+    """Off J add a >> 1; on J rotate word's low n+1 bits left, with our lookahead add (blocks of up to 3).
 
     The add is add_lookahead's: an up-sweep in lookahead form, a middle that makes it the up-sweep of (a, ~sum),
     and the up-sweep run backwards. Both sweeps run on every lane, and only the middle and the last X layer are
@@ -252,7 +252,7 @@ CUTS_255 = {
     12: (0, 44, 54, 65, 77, 90, 113, 134, 157, 182, 206, 232, 255),
 }
 MAX_BLOCKS = 11
-# The tick's add as a blocked-lookahead chain (add_or_shift_la) instead of the ripple.
+# The tick's add as our lookahead add (add_or_shift_ours, 19 temps) instead of the ripple; add_or_shift_la is unused.
 LOOKAHEAD_ADD = True
 # The tick's P as PrefixR, whose write runs its blocks in parallel.
 PARALLEL_PREFIX = True
