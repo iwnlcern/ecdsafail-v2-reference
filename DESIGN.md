@@ -572,7 +572,7 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 20,460,644 scheduled 
 
 ### One-level Karatsuba square-subtract
 
-This section builds on a teammate's starting point (T1).
+This section builds on a teammate's starting point.
 Building, applying and unbuilding half squares into X with beta^2 = f mod q follows [arXiv:2609.09582, section 5.3.4](https://arxiv.org/abs/2609.09582), and the Karatsuba modular square is [arXiv:2609.05625, section VII.2](https://arxiv.org/abs/2609.05625).
 The uncontrolled rows follow section VII.A of the latter, after Litinski.
 Pairing A with C in one fold is how the construction fits the wire budget; no novelty is claimed for that pairing.

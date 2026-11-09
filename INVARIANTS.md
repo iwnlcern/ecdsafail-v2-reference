@@ -120,7 +120,7 @@ Any claim for this build must name both limits and the build refusal.
 - `I2.components` runs `scripts/component_check.py`. It checks the 256-bit adders, doubler, negation and multiplier on boundary inputs near q and 2^256 that random points almost never reach.
 - `I2.mutation` runs `scripts/mutation_control.py`. It confirms that the checker still rejects mutated circuits. At its fixed seed the reference catches 163 of 200 CCX-to-CX demotions, and the rest are equivalent circuits. The check fails below 163.
 - `I2.karatsuba` runs `scripts/karatsuba_check.py` and `scripts/karatsuba_mutation.py`.
-  `KaratsubaMulsub` applies only at even n >= 128, so every other exhaustive row and both mutation controls take `SquareFold`, and the class is otherwise reached only by sampled 256-bit points, on which its canonical tail almost never fires.
+  `KaratsubaMulsub` applies only at even n >= 128, so every other exhaustive row and `I2.mutation` take `SquareFold`, and the class is otherwise reached only by sampled 256-bit points, on which its canonical tail almost never fires.
   This row forces the class at q = 65,521, 262,121 and 262,139.
   At each, it checks every X with gen = 1 for each Y whose AC or B group value lies in [q, 2^n) at the entry of `canon`: 271, 21 and 10 Y, 25,882,122 pairs, the whole population on which the tail's subtraction fires.
   It also checks every Y with gen in {0, 1} at the same primes, 1,179,562 lanes.
@@ -139,7 +139,7 @@ Any claim for this build must name both limits and the build refusal.
   Equal run sequences mean the same permutation, because ops that share only read-only or XOR-target wires commute.
   The check must also reject a body with its first adjacent non-commuting pair swapped, and the certified JSON must be the emitted upload byte for byte.
 
-Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, and 2 x (6 + random R) lanes per simulated addend. A receipt that covers less fails, even with zero failures.
+Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 52 components and 13,867 lanes, 200 mutation trials, 2 x (6 + random R) lanes per simulated addend, and for `I2.karatsuba` 44 rows, 25,882,122 tail pairs, 1,179,562 every-Y lanes, 60 piece lanes, 12 controls and 200 mutation trials with at least 183 caught. A receipt that covers less fails, even with zero failures.
 
 **I3 gate set.** Every emitted primitive is X, CX, CCX or SWAP, with no measurement and no reset. The profile disables measurement cleanup, and a circuit of these four gates is a permutation with no phases. That is why basis-state exactness with clean scratch gives the exact unitary on superpositions. A single Z, CZ or measurement breaks that argument even when every basis check passes. I3 reads the emitted JSON at toy and 256-bit sizes and the JSON of every built addend, and counts the gate kinds in every toy instance and every expanded 256-bit upload.
 

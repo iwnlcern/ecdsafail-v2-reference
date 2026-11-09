@@ -182,7 +182,9 @@ class KaratsubaMulsub:
 
     @staticmethod
     def applies(q):
-        """Where the generator takes it: it loses to SquareFold at 64 bits and wins from 128."""
+        """Where the generator takes it. Standalone, with K left to the caller, it takes more CCX than SquareFold
+        at 2^64 - 59 (11,802 against 10,635) and fewer at 2^128 - 159 (35,838 against 37,661), at more wires
+        (613 against 554)."""
         return q.bit_length() >= 128 and KaratsubaMulsub.fits(q)
 
     @staticmethod
