@@ -48,7 +48,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
             "pass_instances": 2,
             "fold_rows": 11, "fold_add_lanes": 131_064, "fold_lanes": 145_902, "fold_controls": 5,
-            "probe_primes": 7, "probe_lanes_per_variant": 4_161_536, "probe_toy_control_instances": 36}
+            "probe_primes": 7, "probe_lanes_per_variant": 4_161_536, "probe_toy_control_instances": 36,
+            "sweep_cases": 1032, "sweep_lanes": 640, "sweep_control_fails": 516}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -187,6 +188,7 @@ class Run:
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
+            "sweep": [["sweep_check.py", "--out", w / "sweep_check.json"]],
             "fold": [["square_la_check.py", "--out", w / "square_la_check.json"]],
             "probe": [["probe_check.py", "--out", w / "probe_check.json"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
@@ -424,6 +426,28 @@ def i2_mutation(run):
     return Result(FAIL if problems or caught < need else PASS, note, evidence)
 
 
+def i2_sweep(run):
+    p, = run.procs("sweep")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"sweep_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"sweep_check.py printed no summary, see {p.log}")
+    else:
+        problems += [f"failing rows: {summary['failed']}"] * bool(summary["failed"])
+        problems += coverage("cases", summary["cases"], "sweep_cases")
+        problems += coverage("lanes", summary["lanes"], "sweep_lanes")
+        problems += coverage("control failures", summary["control_fails"], "sweep_control_fails")
+        problems += [f"the control failed at {summary['control_fails']} of {summary['control_must_fail']} widths"] * (
+            summary["control_fails"] != summary["control_must_fail"])
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"lookahead_tree at blocks of 2 and 3 and difference_sweep at every n from 2 to 260 on "
+                        f"{summary['lanes']} lanes ({summary['cases']:,} cases); the no-fix control fails at all "
+                        f"{summary['control_fails']} widths with a fix", evidence)
+
+
 def i2_fold(run):
     p, = run.procs("fold")
     rows = json_lines(p.stdout)
@@ -641,6 +665,7 @@ CHECKS = (
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
+    Check("I2.sweep", "exactness: the Euclid difference's tree sweep at every width up to 260 bits", i2_sweep, ("sweep",)),
     Check("I2.fold", "exactness: the square fold's lookahead adds, at small primes and at full width", i2_fold, ("fold",)),
     Check("I2.probe", "exactness: the Bezout tick's probe as a carry-out tree, on every lane at secp-shaped primes", i2_probe,
           ("probe",)),

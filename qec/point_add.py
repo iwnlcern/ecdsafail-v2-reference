@@ -151,7 +151,8 @@ def shared_difference_u1(C, U, V, g0, g1, ring):
 
 
 U6_RING = 257
-# Pairs of wires the Euclid pass's block encodes take their two ancillas from in turn (block zero's aside).
+# Pairs of wires the Euclid pass's block encodes take their two ancillas from in turn (block zero's on the swept
+# path aside).
 EUCLID_ENCODE_PAIRS = 6
 
 
@@ -187,8 +188,8 @@ def _unfan(C, src, copies):
 def difference_sweep(C, U, V, temps):
     """lookahead_sweep's map for the Euclid difference: lookahead_tree with blocks of 2 when tree_temps fits
     len(temps), else lookahead_sweep's own choice. Blocks of 2 have no inner products to clear and make again, so
-    each block's fix is one CCX; they hold about len(U) temps at the tree's peak, so they fit the ring's early,
-    wide steps and give way to blocks of 3 as the ring narrows."""
+    each block's fix is one CCX. They hold len(U) - 4 to len(U) - 13 temps at the tree's peak (248 at len(U) = 257),
+    so they fit only where the ring is nearly as wide as the step."""
     if tree_temps(len(U), 2) <= len(temps):
         lookahead_tree(C, U, V, temps, 2)
     else:

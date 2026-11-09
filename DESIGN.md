@@ -586,15 +586,19 @@ The sections after this one describe the changes this branch makes on top of it.
 
 The Euclid difference's tree sweep (`difference_sweep` in `qec/point_add.py`) uses blocks of two bits wherever `tree_temps` at blocks of two fits the ring, and falls back to `lookahead_sweep`'s own choice, blocks of three and up, where it does not.
 A block of two has no inner product to clear and make again, so its fix is one CCX, and blocks of three spend more CCX per bit for fewer temps.
-Blocks of two hold about one temp per bit at the tree's peak, so they fit the wide early steps on the 193-wire ring and give way to blocks of three as the free tape narrows.
+Blocks of two hold n - 4 to n - 13 temps at the tree's peak for a sweep of n bits, 248 at the widest, n = 257, against 161 for blocks of three, so they fit only where the ring is nearly as wide as the step.
+On the 193-wire ring the first 181 steps, at widths 256 down to 204, still sweep at blocks of three, and every step from width 203 down sweeps at blocks of two.
 At G, 195 of the Euclid step's recorded shapes sweep at blocks of two and 53 at blocks of three.
-The map is lookahead_chain's at every block size, and `lookahead_tree`'s contract at blocks of two and three was checked by simulation on bits at every n from 2 to 260, with a control that drops each block's fixes.
+The map is lookahead_chain's at every block size.
+`I2.sweep` (`scripts/sweep_check.py`) checks `lookahead_tree` at blocks of two and three and `difference_sweep` on bits at every n from 2 to 260, which the toy and small-prime rows never reach at these sizes, with a control that drops each block's fixes.
 At G the circuit is 1,249 wires × 6,312,742 ticks, 7,088,915 CCX and T 49,622,405: 19,592 fewer ticks and 113,016 fewer CCX than the entry above.
 
 ## A wider ring for the Euclid difference
 
 The ring that the Euclid difference takes from the free tape (`U6_RING` in `qec/point_add.py`) grows from 193 wires to 257.
-The ring holds the sweep's temps and the copies of g0 and g1, so a wider ring keeps more steps at blocks of two: at G, 202 recorded step shapes sweep at blocks of two and 76 at blocks of three, against 195 and 53.
+The ring holds the sweep's temps and the copies of g0 and g1, so a wider ring keeps more steps at blocks of two.
+Steps 1 to 103, at width 256, now sweep at blocks of two, until the free tape narrows the ring below the 248 wires they need; the steps from 104 to width 206 sweep at blocks of three, and every step from width 205 down at blocks of two.
+At G, 202 recorded step shapes sweep at blocks of two and 76 at blocks of three, against 195 and 53.
 Steps whose free tape is narrower than the ring take what is there, as before.
 At G the circuit is 1,249 wires × 6,268,410 ticks, 6,951,555 CCX and T 48,660,885: 44,332 fewer ticks and 137,360 fewer CCX than blocks of two on the 193-wire ring.
 The extra step shapes make the hierarchical JSON 84,351,800 bytes, under the 104,857,600-byte upload cap.
@@ -623,7 +627,7 @@ At G the circuit is 1,249 wires × 6,154,163 ticks, 6,970,523 CCX and T 48,793,6
 ## The tick's probe as a carry-out tree
 
 The Bézout tick's first chain is a probe: it computes e = P.top * (the carry out of L plus the selected constant), and leaves every other wire as it was.
-It rippled 16 `_selected_carry` steps up, took one CCX into e, and rippled 16 steps down.
+At G it rippled 15 `_selected_carry` steps up, 12 below the quiet run and 3 above it, with one CCX across the quiet run through M, took one CCX into e, and rippled the same steps down.
 `_probe_tree` in `qec/two_bit.py` computes the same carry out by a tree.
 For each bit it puts the XOR of the active selectors on a temp k, forms g = L * k, and sets L ^= k, so L holds p; g and p are never both 1.
 The low bits below the quiet run merge in a balanced tree, with G = Gr ^ Pr * Gl and P = Pr * Pl formed only where a later merge reads it.

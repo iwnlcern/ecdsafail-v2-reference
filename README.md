@@ -63,7 +63,7 @@ All numbers are measured unless marked as estimates.
 
 **This branch.**
 It builds on ab-godder's `tick-parallel` entry, and `DESIGN.md` credits each change of theirs it keeps.
-At G the circuit is 1,249 wires × 6,017,815 ticks, 7,001,163 CCX, 49,008,141 T and 18,365,946 ops, as `scripts/accept.py` reports it, with 16 pass, 0 fail and 1 pending (`I7.charge`).
+At G the circuit is 1,249 wires × 6,017,815 ticks, 7,001,163 CCX, 49,008,141 T and 18,365,946 ops, as `scripts/accept.py` reports it, with 17 pass, 0 fail and 1 pending (`I7.charge`).
 Qubit-time, wires × ticks, is 7,516,250,935, which is 95.42% below the reference's 164,135,627,418, and T is 2.89% below the reference's 50,465,933.
 The hierarchical JSON for G is 85,054,293 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
 Two named limits apply.
