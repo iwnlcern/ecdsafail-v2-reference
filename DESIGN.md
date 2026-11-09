@@ -590,3 +590,11 @@ Blocks of two hold about one temp per bit at the tree's peak, so they fit the wi
 At G, 195 of the Euclid step's recorded shapes sweep at blocks of two and 53 at blocks of three.
 The map is lookahead_chain's at every block size, and `lookahead_tree`'s contract at blocks of two and three was checked by simulation on bits at every n from 2 to 260, with a control that drops each block's fixes.
 At G the circuit is 1,249 wires × 6,312,742 ticks, 7,088,915 CCX and T 49,622,405: 19,592 fewer ticks and 113,016 fewer CCX than the entry above.
+
+## A wider ring for the Euclid difference
+
+The ring that the Euclid difference takes from the free tape (`U6_RING` in `qec/point_add.py`) grows from 193 wires to 257.
+The ring holds the sweep's temps and the copies of g0 and g1, so a wider ring keeps more steps at blocks of two: at G, 202 recorded step shapes sweep at blocks of two and 76 at blocks of three, against 195 and 53.
+Steps whose free tape is narrower than the ring take what is there, as before.
+At G the circuit is 1,249 wires × 6,268,410 ticks, 6,951,555 CCX and T 48,660,885: 44,332 fewer ticks and 137,360 fewer CCX than blocks of two on the 193-wire ring.
+The extra step shapes make the hierarchical JSON 84,351,800 bytes, under the 104,857,600-byte upload cap.

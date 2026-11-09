@@ -150,7 +150,7 @@ def shared_difference_u1(C, U, V, g0, g1, ring):
         C.cx(g0, c)
 
 
-U6_RING = 193
+U6_RING = 257
 
 
 def ring_layout_u6(n):
