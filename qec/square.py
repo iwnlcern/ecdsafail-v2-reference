@@ -11,7 +11,8 @@ Q = lo + 2^n*hi, and Y - hi = D is at least 0. The rest folds 2^n to f:
 If V >= 2^n, dropping that bit subtracts q and f together and leaves V - 2^n <= f*f - 1 < q.
 Otherwise V - f < q, so subtracting f is enough. So no comparison with q is needed.
 """
-from .arith import _carries, _uncarry, add, add_const, gt_into
+from .arith import _carries, _carry_into, _uncarry, add, add_const, gt_into, sub
+from .builder import Block, Circuit
 from .two_bit import Prefix
 
 
@@ -161,3 +162,215 @@ class SquareFold:
         for w in high:
             C.x(w)
         C.x(c)
+
+
+class _Rows:
+    def __init__(self, k):
+        self.n = k
+
+
+class KaratsubaMulsub:
+    """One-level Karatsuba square-subtract, with canonical build/apply/unbuild groups."""
+
+    @staticmethod
+    def fits(q):
+        """The construction's own bound: n even, and AC's c1 and c2 exclusive, which needs
+        f*G1 well under 2^n, so h + bitlen(f) + 3 < n."""
+        n = q.bit_length()
+        f = (1 << n) - q
+        return n % 2 == 0 and 0 < f and n // 2 + f.bit_length() + 3 < n
+
+    @staticmethod
+    def applies(q):
+        """Where the generator takes it: it loses to SquareFold at 64 bits and wins from 128."""
+        return q.bit_length() >= 128 and KaratsubaMulsub.fits(q)
+
+    @staticmethod
+    def _record_build(build, size):
+        """Expose every retained wire as an explicit junk register of the recorded build.
+
+        Freed temporaries are clean and remain the builder's local scratch. Retained wires
+        may be dirty until the matching inverse, so apply must not recycle them in between.
+        The local allocator is inspected only; record/apply own all state restoration.
+        """
+        local = Circuit()
+        inputs = local.alloc(size)
+        state = {}
+
+        def capture(y):
+            state['result'] = build(local, y)
+            state['junk'] = sorted(set(range(size, local.num_wires)) - set(local.free_stack))
+
+        block = local.record(capture, [inputs])
+        junk = state['junk']
+        layout = inputs + junk
+        block = Block(block.ops, layout, layout, block.calls)
+        result = [layout.index(w) for w in state['result']]
+        return block, len(junk), result
+
+    def __init__(self, mod):
+        self.mod, self.q, self.n = mod, mod.q, mod.n
+        n = self.n
+        assert self.fits(self.q), "AC's c1 and c2 are exclusive only if f*G1 stays well under 2^n"
+        self.h = h = n // 2
+        self.f = f = (1 << n) - self.q
+        self.fb = fb = f.bit_length()
+        assert 3 * f < 1 << (fb + 2)
+        self.sq = SquareFold(mod)
+        beta = 1 << h
+        K = beta * ((1 << (h + 1)) - 1) - (beta - 1) * ((1 << h) - 1)
+        K -= (beta - f) * ((1 << h) - 1) + f * ((1 << n) - 1)
+        self.K = K % self.q
+
+    # pieces; each leaves junk that the group's run back clears
+
+    def half(self, C, Z, W, cin=None):
+        """W (2k clean) <- Z^2 + 2^k - 1: SquareFold's rows, then hi <- Z - hi and lo <- ~lo, as compute does.
+        A clean cin wire, if given, is every add's carry in, so two halves on their own cins share no wire."""
+        k = len(Z)
+        if cin is None:
+            SquareFold._rows(_Rows(k), C, Z, W)
+        else:
+            for y, w in zip(Z, W):              # SquareFold._rows, with the carry in passed explicitly
+                C.cx(y, w)
+            for i in range(k - 1):
+                for w in Z[i + 1:]:
+                    C.cx(Z[i], w)
+                add(C, Z[i + 1:], W[2 * i + 1:k + i], cout=W[k + i], cin=cin)
+            for i in range(1, k):
+                C.cx(Z[i - 1], Z[i])
+        lo, hi = W[:k], W[k:]
+        for w in Z:
+            C.x(w)
+        add(C, Z, hi, cin=cin)
+        for w in Z:
+            C.x(w)
+        for w in hi + lo:
+            C.x(w)
+
+    @staticmethod
+    def add_low(C, a, b):
+        """b += a mod 2^len(b) for len(a) < len(b); the carry above b's top bit goes to a fresh wire."""
+        k = len(a)
+        (t, c) = C.alloc(2)
+        add(C, a, b[:k], cout=t)
+        high = b[k:]
+        if not high:
+            C.cx(t, c)
+            return c
+        carry = Prefix(C, high)
+        C.ccx(t, carry.top, c)
+        carry.write(t)
+        return c
+
+    def canon(self, C, R):
+        """R < 2^n becomes R mod q. k = [R >= q] = [R + f >= 2^n]."""
+        f, fb = self.f, self.fb
+        low, high = R[:fb], R[fb:]
+        (t, k, t2) = C.alloc(3)
+        cs = _carries(C, low, f)
+        _carry_into(C, low[-1], f >> (fb - 1) & 1, cs[-1], t)
+        for i in reversed(range(fb)):
+            _uncarry(C, low, f, cs, i)
+        block, count, result = self._record_build(lambda c, r: [Prefix(c, r).top], len(high))
+        junk = C.alloc(count)
+        C.apply(block, [high, junk])
+        top = (high + junk)[result[0]]
+        C.ccx(t, top, k)
+        C.apply(block, [high, junk], inverse=True)
+        C.free(junk)
+        add_const(C, low, f, ctrl=k, cout=t2)
+        for w in high:
+            C.cx(k, w)
+        C.cx(k, t2)
+        C.free([t2])
+
+    def finish(self, C, R, c1, c2=None):
+        """R + 2^n*c1 + 2^(n+1)*c2, c1 and c2 never both 1, becomes its canonical residue on R."""
+        f, fb = self.f, self.fb
+        F = C.alloc(fb + 2)
+        for i in range(fb):
+            if f >> i & 1:
+                C.cx(c1, F[i])
+                if c2 is not None:
+                    C.cx(c2, F[i + 1])
+        c3 = self.add_low(C, F, R)
+        for i in range(fb):                      # F back to 0: c1 and c2 still hold what built it
+            if f >> i & 1:
+                C.cx(c1, F[i])
+                if c2 is not None:
+                    C.cx(c2, F[i + 1])
+        C.free(F)
+        add_const(C, R[:fb + 2], f, ctrl=c3)
+        self.canon(C, R)
+
+    def fold_ac(self, C, RA, RC):
+        """RA <- (beta*(C' - A') + A') mod q, canonical. RC <- C' - A'."""
+        h, fb = self.h, self.fb
+        pad = C.alloc(2)
+        sub(C, RA + pad, RC)
+        C.free(pad)
+        G0, G1 = RC[:h], RC[h:]
+        T = C.alloc(len(G1) + fb + 1)
+        self.sq._multiple(C, G1, T, (1 << len(G1)) - 1)
+        c1 = self.add_low(C, T, RA)
+        (padg, c2) = C.alloc(2)
+        add(C, G0 + [padg], RA[h:] + [c1], cout=c2)
+        C.free([padg])
+        self.finish(C, RA, c1, c2)
+        return RA
+
+    def fold_b(self, C, RB):
+        """Leaves (2^h*B0 + f*~P) mod q, canonical, on fresh wires. RB <- ~P."""
+        n, h, fb = self.n, self.h, self.fb
+        T = C.alloc(n + fb + 1)
+        for x, w in zip(RB[:h], T[h:]):
+            C.cx(x, w)
+        (b,) = C.alloc(1)
+        sub(C, RB[h:], RB[:h], borrow=b)          # RB0 <- B0 - B1 mod 2^h, b = [B1 > B0]
+        for w in RB[h:]:                         # RB1 <- RB1 - b
+            C.x(w)
+        Prefix(C, RB[h:]).write(b)
+        for w in RB[h:]:
+            C.x(w)
+        for w in RB:                             # RB = ~P
+            C.x(w)
+        self.sq._multiple(C, RB, T, (1 << n) - 1, (1 << n) - 1)
+        lo, hi = T[:n], T[n:]
+        E2 = C.alloc(len(hi) + fb + 1)
+        self.sq._multiple(C, hi, E2, (1 << len(hi)) - 1)
+        c1 = self.add_low(C, E2, lo)
+        self.finish(C, lo, c1)
+        return lo
+
+    def build_ac(self, C, Y):
+        n, h = self.n, self.h
+        L, H = Y[:h], Y[h:]
+        (s,) = C.alloc(1)
+        add(C, L, H, cout=s)
+        RA, RC = C.alloc(n), C.alloc(n + 2)
+        cins = C.alloc(2)
+        self.half(C, L, RA, cins[0])
+        self.half(C, H + [s], RC, cins[1])
+        C.free(cins)
+        return self.fold_ac(C, RA, RC)
+
+    def build_b(self, C, Y):
+        RB = C.alloc(self.n)
+        self.half(C, Y[self.h:], RB)
+        return self.fold_b(C, RB)
+
+    def mulsub(self, C, gen, Y, X, add_k=True):
+        """Subtract gen*Y^2; omit K only when the caller pays it in its preceding add."""
+        n = self.n
+        modadd = C.record_shape(lambda k, a, b: self.sq.modadd(C, a, b, k[0]), [1, n, n])
+        for build, inverse in ((self.build_ac, True), (self.build_b, False)):
+            block, count, result = self._record_build(build, n)
+            junk = C.alloc(count)
+            C.apply(block, [Y, junk])
+            value = [(Y + junk)[i] for i in result]
+            C.apply(modadd, [[gen], value, X], inverse=inverse)
+            C.apply(block, [Y, junk], inverse=True)
+            C.free(junk)
+        if add_k:
+            self.mod.cmodadd_const(C, gen, self.K, X)

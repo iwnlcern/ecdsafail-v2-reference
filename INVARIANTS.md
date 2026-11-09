@@ -119,6 +119,17 @@ Any claim for this build must name both limits and the build refusal.
 - `I2.toy-hier` runs the same check on the hierarchical emission. `check.py` parses the JSON text with `qec/flatten.py` and expands every call through its wire map and inverse flag, as the benchmark would. On each toy instance it also compares that expansion with the text `flatten.operations_json` writes. It then simulates the hierarchical toy file `scripts/emit.py` wrote, `toy127_circuit.hier.json`. The upload is hierarchical, so a broken call map would pass `I2.toy` and still upload a wrong circuit.
 - `I2.components` runs `scripts/component_check.py`. It checks the 256-bit adders, doubler, negation and multiplier on boundary inputs near q and 2^256 that random points almost never reach.
 - `I2.mutation` runs `scripts/mutation_control.py`. It confirms that the checker still rejects mutated circuits. At its fixed seed the reference catches 163 of 200 CCX-to-CX demotions, and the rest are equivalent circuits. The check fails below 163.
+- `I2.karatsuba` runs `scripts/karatsuba_check.py` and `scripts/karatsuba_mutation.py`.
+  `KaratsubaMulsub` applies only at even n >= 128, so every other exhaustive row and both mutation controls take `SquareFold`, and the class is otherwise reached only by sampled 256-bit points, on which its canonical tail almost never fires.
+  This row forces the class at q = 65,521, 262,121 and 262,139.
+  At each, it checks every X with gen = 1 for each Y whose AC or B group value lies in [q, 2^n) at the entry of `canon`: 271, 21 and 10 Y, 25,882,122 pairs, the whole population on which the tail's subtraction fires.
+  It also checks every Y with gen in {0, 1} at the same primes, 1,179,562 lanes.
+  It drives `canon` and `finish` at secp256k1 and 2^128 - 159 on values next to q and 2^n with every allowed carry pair, 60 lanes, and runs seeded samples at both widths with K paid by the class and with K merged into a preceding add.
+  It requires `ControlledPointAdd._mulsub` to take the class at both widths and to keep `SquareFold` at 2^64 - 59 and 65,519.
+  Twelve controls must fail: no canonical tail at each tail prime and in each full-width piece, no high carry, K off by one, and B's top part not folded.
+  The mutation control demotes 200 seeded CCX of the class's circuit at q = 65,521 to CX and judges each mutant on the tail pairs and the every-Y lanes.
+  It catches 183. Each of the 17 survivors lies in group B's build or unbuild, and its controls are never (1, 0) on any Y in that group's block, so the mutant equals the circuit on every input at that prime.
+  The row fails on any wrong or dirty lane, on a control that does not fail, below 183 caught, on a survivor not shown equivalent, or if the classifier calls a caught mutant equivalent.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 

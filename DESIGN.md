@@ -569,3 +569,30 @@ At G this step retains 1,246 wires and 3,299,923 CCX, with 25,875,672 scheduled 
 
 For each bit above zero, let S = carries[i] = c_i XOR a_i, B = V[i] = p, and A = U[i]. Before the carry reaches the bit, set S XOR= g1 AND B and B XOR= g0 AND NOT S. The restore A XOR= S AND B and chain CX S XOR= A then leave A = a_i XOR (g1 AND p) and S = c_i. Since S AND NOT S is zero, the early second select cannot change the restore product. After the chain, apply B XOR= A, A XOR= g1, B XOR= g0 and B XOR= g1. These recover the original selected outputs with the same three CCX per bit. Bit zero and the compare remain unchanged. As before, the argument requires g1 implies g0, established by a clean b before the compare.
 At G this step retains 1,246 wires and 3,299,923 CCX, with 20,460,644 scheduled ticks and 12,940,583 expanded operations.
+
+### One-level Karatsuba square-subtract
+
+This section builds on a teammate's starting point (T1).
+Building, applying and unbuilding half squares into X with beta^2 = f mod q follows [arXiv:2609.09582, section 5.3.4](https://arxiv.org/abs/2609.09582), and the Karatsuba modular square is [arXiv:2609.05625, section VII.2](https://arxiv.org/abs/2609.05625).
+The uncontrolled rows follow section VII.A of the latter, after Litinski.
+Pairing A with C in one fold is how the construction fits the wire budget; no novelty is claimed for that pairing.
+
+Write Y = L + beta H with beta = 2^h and h = n/2, so beta^2 = 2^n = f mod q.
+With A = L^2, B = H^2 and C = (L + H)^2, X - gen Y^2 = X - gen (beta C - (beta - 1) A) + gen (beta - f) B mod q.
+Each half square uses SquareFold's uncontrolled rows and its conversion, which leave Z^2 + 2^k - 1 on 2k clean wires.
+Group AC builds A and C together and folds beta G + A' with G = C' - A', so one f-multiple of G's high half and two adds suffice.
+Group B builds B alone and folds 2^h B0 + f ~P with P = B' - B1.
+Each group's fold ends in a canonical residue, which one controlled modadd subtracts from X or adds to it before the group is unbuilt.
+The half-square offsets and the complement's -f (2^n - 1) collect into one constant K, which a controlled constant add pays under gen.
+
+L + H is formed in place on H first, and each half takes its own carry-in wire, so A's rows and C's rows share no wire and the schedule runs them side by side.
+Each group is a recorded block whose retained wires form an explicit junk register.
+The block's inverse, applied after the shared modadd block, restores Y and clears the junk; wires a build clears itself stay the block's local scratch.
+
+The generator takes the class at even n >= 128 when h + bitlen(f) + 3 < n, which keeps AC's two high carries exclusive.
+Elsewhere SquareFold is unchanged: the class loses to it at 64 bits, and q = 65,519 (f = 17) fails the bound.
+At secp256k1 the square-subtract alone is 124,362 CCX against 142,131, with a peak of 1,243 live wires inside the point add against 1,170.
+In program order it takes 1,023,563 ticks against 1,676,142.
+After the emitter's depth pass it takes 925,846 against 1,505,063, because the pass recovers more from the old square's serial rows.
+`I2.karatsuba` checks the class at forced small primes and its canonical tail at full width; see INVARIANTS.md.
+At G this step retains 1,246 wires, with 3,279,860 CCX, T 22,959,020 and 19,879,611 scheduled ticks.

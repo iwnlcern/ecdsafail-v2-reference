@@ -4,7 +4,7 @@ affine (x, y) with infinity = (0, 0)."""
 from .arith import Mod, _maj, add_const, cswap, load_const
 from .builder import Circuit
 from .curve import Curve
-from .square import SquareFold
+from .square import KaratsubaMulsub, SquareFold
 from .two_bit import TwoBitMod
 from .model import tick_bound, tick_widths
 from . import block0_code, tail_code, tape_block
@@ -602,6 +602,9 @@ class ControlledPointAdd:
     def _mulsub(self, gen, Yr, Xr):
         """X = X - gen * Y^2 mod q, Y untouched."""
         C, mod, n = self.C, self.mod, self.n
+        if KaratsubaMulsub.applies(mod.q):
+            KaratsubaMulsub(mod).mulsub(C, gen, Yr, Xr)
+            return
         if SquareFold.applies(mod.q):
             self._square_mulsub(gen, Yr, Xr)
             return

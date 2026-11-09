@@ -46,7 +46,10 @@ REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
-            "pass_instances": 2}
+            "pass_instances": 2,
+            "karatsuba_rows": 44, "karatsuba_tail_pairs": 25_882_122, "karatsuba_every_y_lanes": 1_179_562,
+            "karatsuba_piece_lanes": 60, "karatsuba_controls": 12,
+            "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 183}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -185,6 +188,7 @@ class Run:
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
+            "karatsuba": [["karatsuba_check.py", "--out", w / "karatsuba_check.json"], ["karatsuba_mutation.py"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
@@ -420,6 +424,42 @@ def i2_mutation(run):
     return Result(FAIL if problems or caught < need else PASS, note, evidence)
 
 
+def i2_karatsuba(run):
+    check, mutation = run.procs("karatsuba")
+    rows = json_lines(check.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    found = json_lines(mutation.stdout)
+    mut = found[-1] if found else {}
+    need = COVERAGE["karatsuba_mutations_caught_at_least"]
+    problems = [f"karatsuba_check.py exited {check.rc}, see {check.log}"] * bool(check.rc)
+    problems += [f"karatsuba_mutation.py exited {mutation.rc}, see {mutation.log}"] * bool(mutation.rc)
+    if summary is None:
+        problems.append(f"karatsuba_check.py printed no summary, see {check.log}")
+    else:
+        problems += [f"failing rows: {summary['failed']}"] * bool(summary["failed"])
+        problems += coverage("rows", summary["rows"], "karatsuba_rows")
+        problems += coverage("tail pairs", sum(summary["tail_pairs"].values()), "karatsuba_tail_pairs")
+        problems += coverage("every-Y lanes", summary["every_y_lanes"], "karatsuba_every_y_lanes")
+        problems += coverage("piece lanes", summary["piece_lanes"], "karatsuba_piece_lanes")
+        problems += coverage("controls", summary["controls"], "karatsuba_controls")
+    if "trials" not in mut:
+        problems.append(f"karatsuba_mutation.py printed no result, see {mutation.log}")
+    else:
+        problems += coverage("mutation trials", mut["trials"], "karatsuba_mutation_trials")
+        problems += [f"{mut['caught']} of {mut['trials']} mutants caught, at least {need} required"] * (mut["caught"] < need)
+        problems += [f"{mut['unclassified']} survivors not shown equivalent"] * bool(mut["unclassified"])
+        problems += ["the survivor classifier called a caught mutant equivalent"] * (not mut["classifier_control"])
+    evidence = {"exits": [check.rc, mutation.rc], "summary": summary, "mutation": mut, "required": need,
+                "logs": [check.log, mutation.log], "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    tail = ", ".join(f"{q}: {pairs:,}" for q, pairs in summary["tail_pairs"].items())
+    return Result(PASS, f"forced at small primes: every X for each Y reaching the canonical tail ({tail} pairs) and "
+                        f"{summary['every_y_lanes']:,} every-Y lanes; canon and finish on {summary['piece_lanes']} "
+                        f"full-width lanes; {summary['controls']} controls fail; {mut['caught']} of {mut['trials']} "
+                        f"mutants caught, at least {need} required, every survivor equivalent", evidence)
+
+
 def i2_secp(run):
     procs, rows = run.secp_hier()
     lanes = 2 * (COVERAGE["secp_special_points"] + run.secp_points)
@@ -594,6 +634,8 @@ CHECKS = (
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
+    Check("I2.karatsuba", "exactness: the Karatsuba square-subtract, forced at small primes and at full width", i2_karatsuba,
+          ("karatsuba",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,
