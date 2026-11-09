@@ -121,7 +121,7 @@ Any claim for this build must name both limits and the build refusal.
 - `I2.mutation` runs `scripts/mutation_control.py`. It confirms that the checker still rejects mutated circuits. At its fixed seed the reference catches 163 of 200 CCX-to-CX demotions, and the rest are equivalent circuits. The check fails below 163.
 - `I2.sweep` runs `scripts/sweep_check.py`.
   At 256 bits the Euclid difference sweeps at blocks of two on a ring of up to 257 wires, and no toy or small-prime row builds a ring that wide, so this row checks the sweep on bits instead.
-  It runs `lookahead_tree` at blocks of two and three on exactly `tree_temps(n, r)` temps, and `difference_sweep` on the temps for blocks of two and on one fewer, at every n from 2 to 260, on 640 lanes: 1,032 cases, each requiring lookahead_chain's map, V unchanged and every temp clean, and `difference_sweep` taking blocks of two exactly when they fit.
+  It runs `lookahead_tree` at blocks of two and three on exactly `tree_temps(n, r)` temps at every n from 2 to 260, and `difference_sweep` on the temps for blocks of two at every n from 3 to 260 and on one fewer from 5 to 260, the widths where those counts are at least one, on 640 lanes: 1,032 cases, each requiring lookahead_chain's map, V unchanged and every temp clean, and `difference_sweep` taking blocks of two exactly when they fit.
   A control compiled from `qec/arith.py` with each block's fixes removed must fail at all 516 widths that have a fix.
 - `I2.fold` runs `scripts/square_la_check.py`.
   The square fold's four long adds run as `add_lookahead` with an optional carry-in wire and carry-out, so the row checks that add on every input at widths 1 to 7, with no carry-in, a carry-in of 0 and of 1, and with and without a carry-out: 131,064 lanes.
@@ -135,7 +135,7 @@ Any claim for this build must name both limits and the build refusal.
   Two controls must fail there: borrowing without the X, and the tree's P merge dropping one side.
   The merge control, installed in the whole point add, must also fail `scripts/check.py`'s exhaustive toy check, so the toy rows reach the tree.
 - `I2.add` runs `scripts/add_check.py`.
-  The Bézout tick's add (`add_or_shift_ours`) runs on `lookahead_chain`, whose blocks of three and in-turn temps the toy rows never reach: their primes sit just above 2^(bits - 1) and leave the tick's merged path from 14 bits, and below that the chain has no block of three and, with 19 temps, never takes a temp twice.
+  The Bézout tick's add (`add_or_shift_ours`) runs on `lookahead_chain`, whose blocks of three and in-turn temps the toy rows never reach: they stop at 10 bits, the add's block sizes (`_block_sizes(n - 1, 3)`) have no block of three below 16 bits, and with 19 temps the chain never takes a temp twice at those sizes.
   The row runs `scripts/check.py`'s exhaustive check, every point with both control values, at the largest prime under 2^bits with the merged path and a prime-order y^2 = x^3 + 7, for bits 14 to 17, 977,800 lanes: as built, where the chain has blocks of three at 16 and 17 bits, and with the add's temps made 2, where its temps wrap from 15 bits.
   Three controls on the 2-temp build are compiled from this tree's source with one fault each, and must fail exactly where their feature is reached: a block of three's serial CCX reading the wrong product, the chain's first temp cleared late, which matters only when temps wrap, and the add's middle dropping a CX.
   The last fault, at 19 temps, must also fail the exhaustive toy check.

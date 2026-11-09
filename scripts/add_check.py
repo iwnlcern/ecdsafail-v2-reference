@@ -2,9 +2,9 @@
 
     python3 scripts/add_check.py [--out FILE]
 
-The toy rows' primes sit just above 2^(bits-1) and leave the tick's merged path from 14 bits, so below that the
-add's chain (add_or_shift_ours in qec/two_bit.py, built on arith.lookahead_chain) never has a block of 3, and with
-19 temps it never takes a temp twice. At 256 bits it has both. This row runs scripts/check.py's own exhaustive check
+The toy rows stop at 10 bits, and the add's chain (add_or_shift_ours in qec/two_bit.py, built on
+arith.lookahead_chain, with blocks from _block_sizes(n - 1, 3)) has no block of 3 below 16 bits, and with 19 temps
+it never takes a temp twice at those sizes. At 256 bits it has both. This row runs scripts/check.py's own exhaustive check
 (ControlledPointAdd, build_ops, check: every point, both control values) at the largest prime under 2^bits with the
 merged path and a prime-order y^2 = x^3 + 7, for bits 14 to 17, and logs each chain's blocks of 3 and temp uses:
   as built       the tree's own code, 19 temps: blocks of 3 at 16 and 17 bits; 0 failures required;
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 TWO_BIT, ARITH = ROOT / "qec" / "two_bit.py", ROOT / "qec" / "arith.py"
-DISPATCH = ("            return add_or_shift_ours(C, J, a, word, self.n, 19)\n",
+TWO_TEMPS = ("            return add_or_shift_ours(C, J, a, word, self.n, 19)\n",
             "            return add_or_shift_ours(C, J, a, word, self.n, 2)\n")
 LACTL = ("        C.ccx(k, c, u)\n        C.cx(k, u)\n", "        C.ccx(k, c, u)\n")
 BLK3 = ("        C.ccx(U[i], T[r], U[i + r])\n", "        C.ccx(U[i], T[2] if r == 3 else T[r], U[i + r])\n")
@@ -73,7 +73,7 @@ def edited(path, pairs):
 def run_variant(name, out):
     """In this process: install the variant's two_bit.py as qec.two_bit, then check the forced primes."""
     two, fault2, fault_a, bits = VARIANTS[name]
-    pairs = [DISPATCH] * two + [LACTL] * (fault2 == "lactl")
+    pairs = [TWO_TEMPS] * two + [LACTL] * (fault2 == "lactl")
     import qec
     mod = types.ModuleType("qec.two_bit")
     mod.__file__, mod.__package__ = str(TWO_BIT), "qec"

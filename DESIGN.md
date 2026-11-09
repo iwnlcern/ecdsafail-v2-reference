@@ -587,7 +587,7 @@ The sections after this one describe the changes this branch makes on top of it.
 The Euclid difference's tree sweep (`difference_sweep` in `qec/point_add.py`) uses blocks of two bits wherever `tree_temps` at blocks of two fits the ring, and falls back to `lookahead_sweep`'s own choice, blocks of three and up, where it does not.
 A block of two has no inner product to clear and make again, so its fix is one CCX, and blocks of three spend more CCX per bit for fewer temps.
 Blocks of two hold n - 4 to n - 13 temps at the tree's peak for a sweep of n bits, 248 at the widest, n = 257, against 161 for blocks of three, so they fit only where the ring is nearly as wide as the step.
-On the 193-wire ring the first 181 steps, at widths 256 down to 204, still sweep at blocks of three, and every step from width 203 down sweeps at blocks of two.
+On the 193-wire ring steps 1 to 181, at widths 256 down to 204, still sweep at blocks of three, and every step from width 203 down to width 9 sweeps at blocks of two; the last seven steps, at widths 8 to 2, have too little free tape for the ring and take the narrower-ring or single-chain difference.
 At G, 195 of the Euclid step's recorded shapes sweep at blocks of two and 53 at blocks of three.
 The map is lookahead_chain's at every block size.
 `I2.sweep` (`scripts/sweep_check.py`) checks `lookahead_tree` at blocks of two and three and `difference_sweep` on bits at every n from 2 to 260, which the toy and small-prime rows never reach at these sizes, with a control that drops each block's fixes.
@@ -597,7 +597,7 @@ At G the circuit is 1,249 wires × 6,312,742 ticks, 7,088,915 CCX and T 49,622,4
 
 The ring that the Euclid difference takes from the free tape (`U6_RING` in `qec/point_add.py`) grows from 193 wires to 257.
 The ring holds the sweep's temps and the copies of g0 and g1, so a wider ring keeps more steps at blocks of two.
-Steps 1 to 103, at width 256, now sweep at blocks of two, until the free tape narrows the ring below the 248 wires they need; the steps from 104 to width 206 sweep at blocks of three, and every step from width 205 down at blocks of two.
+Steps 1 to 103, at width 256, now sweep at blocks of two, until the free tape narrows the ring below the 248 wires they need; the steps from 104 to width 206 sweep at blocks of three, and every step from width 205 down to width 9 at blocks of two.
 At G, 202 recorded step shapes sweep at blocks of two and 76 at blocks of three, against 195 and 53.
 Steps whose free tape is narrower than the ring take what is there, as before.
 At G the circuit is 1,249 wires × 6,268,410 ticks, 6,951,555 CCX and T 48,660,885: 44,332 fewer ticks and 137,360 fewer CCX than blocks of two on the 193-wire ring.
@@ -644,7 +644,7 @@ The tick's add takes a >> 1 off J and rotates word's low n + 1 bits on J.
 ab-godder's entry runs it as a blocked-lookahead chain (`add_or_shift_la`) on 14 wires.
 This branch runs it as `add_or_shift_ours` in `qec/two_bit.py`, the form of `add_lookahead`: an up-sweep in lookahead form with blocks of up to three bits (`_block_sizes`), a middle that turns it into the up-sweep of (a, ~sum), and the same up-sweep run backwards.
 Both sweeps run on every lane, and only the middle and the last X layer are gated, by not-J, so on J the backward sweep undoes the forward one and the rotation follows.
-J's copies sit on the sweep's 19 temps while those are clean, and the chain takes its temps in turn, so with fewer temps a block waits for one that an earlier block is still clearing.
+J's copies sit on the sweep's 19 temps while those are clean, and the chain takes its temps in turn, so a block that takes a temp an earlier block is still clearing waits for it; at G the 256-bit chain makes 166 temp uses over its 21 wires, and more temps mean fewer such waits.
 This add was built on 2026-11-08 for the `v2-depth` line, before ab-godder's entry, whose notes list blocks of three in the add as an idea it did not build.
-`I2.add` (`scripts/add_check.py`) runs the exhaustive check at four 14- to 17-bit primes on the tick's merged path, where the chain has blocks of three, and with the add's temps cut to 2, where they wrap, with controls that fail exactly where each feature is reached.
+`I2.add` (`scripts/add_check.py`) runs the exhaustive check at four 14- to 17-bit primes on the tick's merged path, the 16- and 17-bit ones with blocks of three in the chain, as built and with the add's temps cut to 2, where they wrap from 15 bits, with controls that fail exactly where each feature is reached.
 At G the circuit is 1,255 wires × 5,553,352 ticks, 7,185,003 CCX and T 50,295,021: 464,463 fewer ticks for 183,840 more CCX and 6 more wires.

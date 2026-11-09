@@ -188,7 +188,8 @@ def _unfan(C, src, copies):
 def difference_sweep(C, U, V, temps):
     """lookahead_sweep's map for the Euclid difference: lookahead_tree with blocks of 2 when tree_temps fits
     len(temps), else lookahead_sweep's own choice. Blocks of 2 have no inner products to clear and make again, so
-    each block's fix is one CCX. They hold len(U) - 4 to len(U) - 13 temps at the tree's peak (248 at len(U) = 257),
+    each block's fix is one CCX. From len(U) = 8 up they hold len(U) - 4 to len(U) - 13 temps at the tree's peak
+    (248 at len(U) = 257),
     so they fit only where the ring is nearly as wide as the step."""
     if tree_temps(len(U), 2) <= len(temps):
         lookahead_tree(C, U, V, temps, 2)
