@@ -124,6 +124,12 @@ Any claim for this build must name both limits and the build refusal.
   It then simulates the square-subtract X - g*Y^2 mod q through `SquareFold.compute` and `modadd`: every Y with two X at q = 65,521, and seeded Y at 262,121, 2^64 - 59, 2^128 - 159 and secp256k1, 145,902 lanes, with Y and g restored and every other wire clean.
   Five controls must fail: the add without its carry-in, and on the square-subtract at 65,521 and 262,121, the multiple's carry-in dropped and the last add's carry-out dropped.
   `SquareFold` applies at the toy primes 13, 61 and 127 too, so `I2.toy` and `I2.toy-hier` reach the fold there.
+- `I2.probe` runs `scripts/probe_check.py`.
+  The Bézout tick's probe (its first chain) computes e = AND(H) * the carry out of L plus the selected constant, by a carry-out tree that borrows H's wires with an X.
+  The row builds the probe's context as the tick does at the 7 secp-shaped primes 2^n - (2^k + d), n = 12 to 18, that have the merged path, a quiet run of at least 2 bits and at least 2 H bits, and simulates every lane: every window and H value and every selector value, 4,161,536 lanes a variant.
+  The tree and the ripple chain it replaced must both give e on every lane, leave every other wire as it began, and have every borrowed wire read 1 wherever AND(H) = 1, the only lanes on which e can be 1.
+  Two controls must fail there: borrowing without the X, and the tree's P merge dropping one side.
+  The merge control, installed in the whole point add, must also fail `scripts/check.py`'s exhaustive toy check, so the toy rows reach the tree.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 

@@ -619,3 +619,17 @@ Every other gate of the square is unchanged.
 On its own at secp256k1 in program order, the square-subtract goes from 422,759 ticks and 445,683 CCX to 348,204 ticks and 464,651 CCX, and from 1,167 to 1,232 wires, under the point add's peak.
 `I2.fold` (`scripts/square_la_check.py`) checks the add on every input at widths 1 to 7 in every carry mode and the square-subtract at five primes up to secp256k1, and five controls that drop a carry-in or a carry-out must fail.
 At G the circuit is 1,249 wires × 6,154,163 ticks, 6,970,523 CCX and T 48,793,661: 75,073 fewer ticks for 18,968 more CCX.
+
+## The tick's probe as a carry-out tree
+
+The Bézout tick's first chain is a probe: it computes e = P.top * (the carry out of L plus the selected constant), and leaves every other wire as it was.
+It rippled 16 `_selected_carry` steps up, took one CCX into e, and rippled 16 steps down.
+`_probe_tree` in `qec/two_bit.py` computes the same carry out by a tree.
+For each bit it puts the XOR of the active selectors on a temp k, forms g = L * k, and sets L ^= k, so L holds p; g and p are never both 1.
+The low bits below the quiet run merge in a balanced tree, with G = Gr ^ Pr * Gl and P = Pr * Pl formed only where a later merge reads it.
+M's top carries the result across the quiet run, the top bits ripple, e takes its CCX, and the recorded gates run backwards.
+Its temps come from the same `take()` the ripple used, which borrows H's wires with an X and returns them with an X.
+That is sound because e can be 1 only where every H wire reads 1, so a borrowed wire is clean exactly where the result matters.
+`I2.probe` (`scripts/probe_check.py`) checks the tree and the ripple on every lane at seven secp-shaped primes, with controls for a borrow without its X and for a broken merge, and checks that the broken merge fails the exhaustive toy check.
+The tick's second chain writes L, so it needs every carry and keeps the ripple.
+At G the circuit is 1,249 wires × 6,017,815 ticks, 7,001,163 CCX and T 49,008,141: 136,348 fewer ticks for 30,640 more CCX, the same figures as on ab-godder's entry alone.
