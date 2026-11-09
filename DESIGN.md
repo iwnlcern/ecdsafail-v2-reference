@@ -584,6 +584,7 @@ Group AC builds A and C together and folds beta G + A' with G = C' - A', so one 
 Group B builds B alone and folds 2^h B0 + f ~P with P = B' - B1.
 Each group's fold ends in a canonical residue, which one controlled modadd subtracts from X or adds to it before the group is unbuilt.
 The half-square offsets and the complement's -f (2^n - 1) collect into one constant K, which a controlled constant add pays under gen.
+In the point add, `_kernel` already adds 3a to X under gen immediately before the square-subtract, and nothing between them reads X, so K joins that constant as 3a + K at no cost.
 
 L + H is formed in place on H first, and each half takes its own carry-in wire, so A's rows and C's rows share no wire and the schedule runs them side by side.
 Each group is a recorded block whose retained wires form an explicit junk register.
@@ -596,3 +597,4 @@ In program order it takes 1,023,563 ticks against 1,676,142.
 After the emitter's depth pass it takes 925,846 against 1,505,063, because the pass recovers more from the old square's serial rows.
 `I2.karatsuba` checks the class at forced small primes and its canonical tail at full width; see INVARIANTS.md.
 At G this step retains 1,246 wires, with 3,279,860 CCX, T 22,959,020 and 19,879,611 scheduled ticks.
+With K folded into the kernel's constant add, the head retains 1,246 wires, with 3,278,326 CCX, T 22,948,282 and 19,861,888 scheduled ticks.

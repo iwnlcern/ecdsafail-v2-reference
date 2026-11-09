@@ -72,7 +72,10 @@ def build(q, cls=KaratsubaMulsub, merged=False):
 
 
 def point_add_mulsub(q):
-    """ControlledPointAdd._mulsub on standalone registers, without building a whole point add."""
+    """ControlledPointAdd._mulsub on standalone registers, without building a whole point add.
+
+    _mulsub leaves X short by gen * _square_offset(), which _kernel pays in its preceding
+    constant add, so the harness expects X - gen * (Y^2 + offset)."""
     gen_obj = object.__new__(ControlledPointAdd)
     c, mod = Circuit(), Mod(q)
     gen_obj.C, gen_obj.mod, gen_obj.n = c, mod, mod.n
@@ -80,7 +83,7 @@ def point_add_mulsub(q):
     (gen,) = c.alloc(1)
     x, y = c.alloc(mod.n), c.alloc(mod.n)
     gen_obj._mulsub(gen, y, x)
-    return gen_obj, Harness(q, c.ops, c.num_wires, gen, x, y, 0)
+    return gen_obj, Harness(q, c.ops, c.num_wires, gen, x, y, -gen_obj._square_offset() % q)
 
 
 def planes(values, width):
@@ -330,14 +333,18 @@ def main():
         c = Circuit()
         (gen,) = c.alloc(1)
         x, y = c.alloc(len(h.x)), c.alloc(len(h.y))
-        KaratsubaMulsub(Mod(q)).mulsub(c, gen, y, x)
+        square = KaratsubaMulsub(Mod(q))
+        square.mulsub(c, gen, y, x, add_k=False)
         same = h.ops == c.ops and (gen_obj._square_blk, gen_obj._modadd_blk) == (None, None)
-        rows.add(f"point add takes the class at {q.bit_length()} bits", same, ops=len(h.ops) // 4)
+        r = check_lanes(h, sample_lanes(q, SAMPLE_SEEDS[0]))
+        ok = same and gen_obj._square_offset() == square.K and clean(r)
+        rows.add(f"point add takes the class at {q.bit_length()} bits, K left to the kernel", ok, ops=len(h.ops) // 4,
+                 offset=str(gen_obj._square_offset()), **r)
     for q in ((1 << 64) - 59, 65_519):
         gen_obj, h = point_add_mulsub(q)
         rng = random.Random(1)
         r = check_lanes(h, [(g, rng.randrange(q), rng.randrange(q)) for _ in range(128) for g in (0, 1)])
-        rows.add(f"point add keeps SquareFold at {q}", clean(r) and gen_obj._square_blk is not None, **r)
+        rows.add(f"point add keeps SquareFold at {q}", clean(r) and gen_obj._square_blk is not None and gen_obj._square_offset() == 0, **r)
 
     # The canonical tail, by enumeration, then every Y, at each tail prime.
     for q in TAIL_PRIMES:
