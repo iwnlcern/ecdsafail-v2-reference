@@ -21,7 +21,91 @@ hold H's two top bits between the ticks, and nothing clean is held across them.
 from functools import lru_cache
 import heapq
 
-from .arith import Mod, _Gates, _emit, _maj, _selected_carry, cswap, gt_into
+from .arith import Mod, _Gates, _emit, _maj, _selected_carry, adjacent_xor, cswap, gt_into, lookahead_chain
+
+
+def _block_sizes(w, top):
+    """arith.lookahead_sizes's blocks, 1, 1, 2, 2, ... from each end, but at most top bits, so that
+    they cover all w bits; capping lookahead_sizes's own list would leave its upper bits in blocks of 1."""
+    bottom, upper, left, b, d = [], [], w, 0, 0
+    while left > 0:
+        nb, nt = min(top, 1 + b // 2), min(top, 1 + d // 2)
+        if nb <= nt:
+            bottom.append(min(nb, left))
+            b += 1
+        else:
+            upper.append(min(nt, left))
+            d += 1
+        left -= min(nb, nt, left)
+    return bottom + upper[::-1]
+
+
+def add_or_shift_ours(C, J, a, word, n, ntemps):
+    """Off J add a >> 1; on J rotate word's low n+1 bits left (fold's lookahead add, 9127ffd on the cap head).
+
+    The add is add_lookahead's: an up-sweep in lookahead form, a middle that makes it the up-sweep of (a, ~sum),
+    and the up-sweep run backwards. Both sweeps run on every lane, and only the middle and the last X layer are
+    gated, by not-J, so on J the backward sweep undoes the forward one. J's copies sit on the sweep's temps while
+    those are clean."""
+    ops, tgt = a[1:], word[:n - 1]
+    (cin, carry, t) = C.alloc(3)
+    temps = C.alloc(ntemps)
+    up = _Gates()
+    for x, y in zip(ops, tgt):
+        up.cx(x, y)
+    up.cx(ops[0], cin)
+    adjacent_xor(up, ops)
+    lookahead_chain(up, [cin] + ops, [None] + tgt, temps + [carry, t], _block_sizes(n - 1, 3))
+    _emit(C, up.ops)
+
+    def fan():
+        sources, tree, filled = [J], [], 0
+        while filled < len(temps):
+            layer = []
+            for source in sources:
+                if filled == len(temps):
+                    break
+                C.cx(source, temps[filled])
+                tree.append((source, temps[filled]))
+                layer.append(temps[filled])
+                filled += 1
+            sources.extend(layer)
+        return tree
+
+    copies = [J] + temps
+    tree = fan()
+    for c in copies:
+        C.x(c)
+    C.ccx(J, ops[-1], carry)
+    C.ccx(carry, word[n - 1], t)
+    C.ccx(t, word[n], word[n + 1])
+    C.cx(t, word[n])
+    C.cx(carry, word[n - 1])
+    C.x(word[n - 1])
+    C.ccx(carry, word[n - 1], t)
+    C.x(word[n - 1])
+    C.ccx(J, ops[-1], carry)
+    for i, (c, u) in enumerate(zip([cin] + ops[:-1], tgt)):
+        k = copies[i % len(copies)]
+        C.ccx(k, c, u)
+        C.cx(k, u)
+    for c in copies:
+        C.x(c)
+    for source, target in reversed(tree):
+        C.cx(source, target)
+    _emit(C, reversed(up.ops))
+    tree = fan()
+    for i, u in enumerate(tgt):
+        C.cx(copies[i % len(copies)], u)
+        C.x(u)
+    for i in range((n + 1) // 2):
+        cswap(C, copies[i % len(copies)], [word[i]], [word[n - i]])
+    for i in range(n // 2):
+        cswap(C, copies[(i + 1) % len(copies)], [word[i + 1]], [word[n - i]])
+    for source, target in reversed(tree):
+        C.cx(source, target)
+    C.free(temps)
+    C.free([cin, carry, t])
 
 
 @lru_cache(maxsize=None)
@@ -911,7 +995,7 @@ class TwoBitMod(Mod):
     def _add_or_shift(self, C, J, a, word):
         """Off J add a >> 1; on J rotate word's low n+1 bits left."""
         if LOOKAHEAD_ADD and self.n > 3:
-            return add_or_shift_la(C, J, a, word, self.n)
+            return add_or_shift_ours(C, J, a, word, self.n, 19)
         n = self.n
         (cin, D, carry, t) = C.alloc(4)
         extra = C.alloc(3)

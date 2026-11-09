@@ -637,3 +637,14 @@ That is sound because e can be 1 only where every H wire reads 1, so a borrowed 
 `I2.probe` (`scripts/probe_check.py`) checks the tree and the ripple on every lane at seven secp-shaped primes, with controls for a borrow without its X and for a broken merge, and checks that the broken merge fails the exhaustive toy check.
 The tick's second chain writes L, so it needs every carry and keeps the ripple.
 At G the circuit is 1,249 wires × 6,017,815 ticks, 7,001,163 CCX and T 49,008,141: 136,348 fewer ticks for 30,640 more CCX, the same figures as on ab-godder's entry alone.
+
+## A lookahead add with 19 temps in the tick
+
+The tick's add takes a >> 1 off J and rotates word's low n + 1 bits on J.
+ab-godder's entry runs it as a blocked-lookahead chain (`add_or_shift_la`) on 14 wires.
+This branch runs it as `add_or_shift_ours` in `qec/two_bit.py`, the form of `add_lookahead`: an up-sweep in lookahead form with blocks of up to three bits (`_block_sizes`), a middle that turns it into the up-sweep of (a, ~sum), and the same up-sweep run backwards.
+Both sweeps run on every lane, and only the middle and the last X layer are gated, by not-J, so on J the backward sweep undoes the forward one and the rotation follows.
+J's copies sit on the sweep's 19 temps while those are clean, and the chain takes its temps in turn, so with fewer temps a block waits for one that an earlier block is still clearing.
+This add was built on 2026-11-08 for the `v2-depth` line, before ab-godder's entry, whose notes list blocks of three in the add as an idea it did not build.
+`I2.add` (`scripts/add_check.py`) runs the exhaustive check at four 14- to 17-bit primes on the tick's merged path, where the chain has blocks of three, and with the add's temps cut to 2, where they wrap, with controls that fail exactly where each feature is reached.
+At G the circuit is 1,255 wires × 5,553,352 ticks, 7,185,003 CCX and T 50,295,021: 464,463 fewer ticks for 183,840 more CCX and 6 more wires.

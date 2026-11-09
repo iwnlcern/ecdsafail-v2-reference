@@ -134,6 +134,11 @@ Any claim for this build must name both limits and the build refusal.
   The tree and the ripple chain it replaced must both give e on every lane, leave every other wire as it began, and have every borrowed wire read 1 wherever AND(H) = 1, the only lanes on which e can be 1.
   Two controls must fail there: borrowing without the X, and the tree's P merge dropping one side.
   The merge control, installed in the whole point add, must also fail `scripts/check.py`'s exhaustive toy check, so the toy rows reach the tree.
+- `I2.add` runs `scripts/add_check.py`.
+  The Bézout tick's add (`add_or_shift_ours`) runs on `lookahead_chain`, whose blocks of three and in-turn temps the toy rows never reach: their primes sit just above 2^(bits - 1) and leave the tick's merged path from 14 bits, and below that the chain has no block of three and, with 19 temps, never takes a temp twice.
+  The row runs `scripts/check.py`'s exhaustive check, every point with both control values, at the largest prime under 2^bits with the merged path and a prime-order y^2 = x^3 + 7, for bits 14 to 17, 977,800 lanes: as built, where the chain has blocks of three at 16 and 17 bits, and with the add's temps made 2, where its temps wrap from 15 bits.
+  Three controls on the 2-temp build are compiled from this tree's source with one fault each, and must fail exactly where their feature is reached: a block of three's serial CCX reading the wrong product, the chain's first temp cleared late, which matters only when temps wrap, and the add's middle dropping a CX.
+  The last fault, at 19 temps, must also fail the exhaustive toy check.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 

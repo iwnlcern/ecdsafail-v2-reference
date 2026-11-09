@@ -49,7 +49,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "pass_instances": 2,
             "fold_rows": 11, "fold_add_lanes": 131_064, "fold_lanes": 145_902, "fold_controls": 5,
             "probe_primes": 7, "probe_lanes_per_variant": 4_161_536, "probe_toy_control_instances": 36,
-            "sweep_cases": 1032, "sweep_lanes": 640, "sweep_control_fails": 516}
+            "sweep_cases": 1032, "sweep_lanes": 640, "sweep_control_fails": 516,
+            "add_rows": 15, "add_lanes": 977_800, "add_control_rows": 4}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -191,6 +192,7 @@ class Run:
             "sweep": [["sweep_check.py", "--out", w / "sweep_check.json"]],
             "fold": [["square_la_check.py", "--out", w / "square_la_check.json"]],
             "probe": [["probe_check.py", "--out", w / "probe_check.json"]],
+            "add": [["add_check.py", "--out", w / "add_check.json"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
@@ -491,6 +493,28 @@ def i2_probe(run):
                         f"of {summary['toy_control_instances']} instances", evidence)
 
 
+def i2_add(run):
+    p, = run.procs("add")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"add_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"add_check.py printed no summary, see {p.log}")
+    else:
+        problems += [f"failing rows: {summary['failed']}"] * bool(summary["failed"])
+        problems += coverage("rows", summary["rows"], "add_rows")
+        problems += coverage("lanes", summary["lanes"], "add_lanes")
+        problems += coverage("failing control rows", summary["control_rows_failing"], "add_control_rows")
+        problems += ["no block of 3 reached"] * (not summary["blocks_of_3_reached"])
+        problems += ["no temp reuse reached"] * (not summary["wrap_reached"])
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"every point at four 14- to 17-bit primes on the merged path, as built and with 2 temps "
+                        f"({summary['lanes']:,} lanes), reaching blocks of 3 and reused temps; "
+                        f"{summary['control_rows_failing']} controls fail where their feature is reached", evidence)
+
+
 def i2_secp(run):
     procs, rows = run.secp_hier()
     lanes = 2 * (COVERAGE["secp_special_points"] + run.secp_points)
@@ -669,6 +693,8 @@ CHECKS = (
     Check("I2.fold", "exactness: the square fold's lookahead adds, at small primes and at full width", i2_fold, ("fold",)),
     Check("I2.probe", "exactness: the Bezout tick's probe as a carry-out tree, on every lane at secp-shaped primes", i2_probe,
           ("probe",)),
+    Check("I2.add", "exactness: the Bezout tick's lookahead add where its chain has blocks of 3 and reuses temps", i2_add,
+          ("add",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,
