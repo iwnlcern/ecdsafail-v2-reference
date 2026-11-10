@@ -133,17 +133,27 @@ class Prefix:
             C.cx(t, v)
             C.ccx(a, v, p)
             C.cx(t, v)
+            # Each bit's increment runs before the uncompute that ends its chain: x ^= p*(not below)
+            # leaves below*x as it was for the uncompute, and the x ^= p that completes x ^= p*below
+            # waits for the block's last bit, since no later bit reads x[i] or writes p.
             for i in reversed(range(1, len(x))):
                 below = x[0] if i == 1 else u[i - 2]
-                C.ccx(below, x[i], u[i - 1])
+                C.x(below)
                 C.ccx(p, below, x[i])
+                C.x(below)
+                C.ccx(below, x[i], u[i - 1])
+            for i in reversed(range(1, len(x))):
+                C.cx(p, x[i])
             C.cx(p, x[0])
             for w in reversed(u):
                 C.x(w)
             C.ccx(t, a, p)
             C.free([p])
-        C.ccx(bits[0], bits[1], self.first)
+        C.x(bits[0])
         C.ccx(t, bits[0], bits[1])
+        C.x(bits[0])
+        C.ccx(bits[0], bits[1], self.first)
+        C.cx(t, bits[1])
         C.cx(t, bits[0])
         C.free([self.first])
 

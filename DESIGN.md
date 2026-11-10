@@ -591,3 +591,12 @@ It reads definition bodies only, so definitions stay identical over addends, and
 The flat branch never changes, so `check_hier.py` checks the builder with `depth_pass=False`, and `receipts/baseline/flat_ops.sha256` does not move.
 `scripts/pass_check.py` certifies every definition, sharing no code with the pass (`INVARIANTS.md`, `I2.pass`).
 At G this step retains 4,096 wires and 3,192,795 CCX, with 26,454,543 scheduled ticks and 11,532,839 expanded operations.
+
+### Increment prefix before uncompute
+
+Prefix.write increments each bit on x XOR p times not-below before uncomputing its AND chain.
+The uncompute is unchanged because below times (x XOR p times not-below) equals below times x.
+The remaining CX from p to each bit waits until the block's last bit, so the carry chain contains only the uncompute CCX.
+The first two bits take the same form with t, and every Prefix.write caller uses this identity, including the square.
+CCX, T and wires are unchanged; the extra X and CX gates trade operation count for shorter depth.
+At G this step retains 4,096 wires and 3,192,795 CCX, with 24,915,625 scheduled ticks and 12,064,427 expanded operations.
