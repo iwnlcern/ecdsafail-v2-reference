@@ -49,7 +49,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "pass_instances": 2,
             "probe_primes": 7, "probe_lanes_per_variant": 4_161_536, "probe_toy_control_instances": 36,
             "post_pass_instances": 40, "post_pass_lanes": 514_700, "post_pass_control_instances": 22,
-            "post_pass_control_caught_at_least": 16}
+            "post_pass_control_caught_at_least": 16,
+            "ring_widths": 4, "ring_circuits": 54}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -191,6 +192,8 @@ class Run:
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "probe": [["probe_check.py", "--out", w / "probe_check.json"]],
             "post-pass": [["post_pass_check.py", "--out", w / "post_pass_check.json"]],
+            "ring": [["ring_k_check.py", "--out", w / "ring_k_check.json"]],
+            "ring-control": [["ring_k_check.py", "--control", "--out", w / "ring_k_check_control.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
             **{f"emit:{name}": [["emit.py", *args, "--out", w / "emit" / filename]] for name, (filename, args) in EMITS.items()},
@@ -503,6 +506,41 @@ def i2_post_pass(run):
                   evidence)
 
 
+def _ring_summary(run, group):
+    p, = run.procs(group)
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"ring_k_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"ring_k_check.py printed no summary, see {p.log}")
+    else:
+        problems += coverage("widths", summary["widths"], "ring_widths")
+        problems += coverage("circuits", summary["circuits"], "ring_circuits")
+    return p, summary, problems
+
+
+def i2_ring(run):
+    p, summary, problems = _ring_summary(run, "ring")
+    if summary is not None:
+        problems += ["a ring size gave a wrong or unclean step"] * (not summary["exact"])
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"U6_RING {summary['u6_ring']}; the Euclid step at every ring size, {summary['circuits']} circuits "
+                        f"at widths 9 to 12, exact on the step domain as built and after qec/gate_pass.py", evidence)
+
+
+def i2_ring_control(run):
+    p, summary, problems = _ring_summary(run, "ring-control")
+    if summary is not None:
+        problems += ["the ring's dirty last wire passed at some size"] * (not summary["control_fails_everywhere"])
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"with the ring's last wire starting at 1, the step fails at every one of the {summary['circuits']} "
+                        f"ring sizes, as built and after qec/gate_pass.py", evidence)
+
+
 def i2_secp_flat(run):
     proc, row = run.secp_flat()
     lanes = 2 * (COVERAGE["secp_special_points"] + SECP_RANDOM_POINTS[False])
@@ -649,6 +687,8 @@ CHECKS = (
           ("probe",)),
     Check("I2.post-pass", "exactness: the scored post-pass on the probe tree, before and after, with a wrong cancel",
           i2_post_pass, ("post-pass",)),
+    Check("I2.ring", "exactness: the Euclid step at every ring size, as built and after the post-pass", i2_ring, ("ring",)),
+    Check("I2.ring-control", "exactness: the ring check rejects a dirty ring wire", i2_ring_control, ("ring-control",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,

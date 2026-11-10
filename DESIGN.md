@@ -822,3 +822,15 @@ That is a claim for the tree's code only; the pass and the rest of the circuit i
 At G the pass cancels 21,344 pairs, against 21,312 on 2elliot's entry: 8 of them pair two of the tree's own gates, and 288 more pair an X of `take()` or `drop()`, which borrow and return H's wires while the tree runs, with another gate.
 The tick's second chain writes L, so it needs every carry and keeps the ripple.
 At G, after `qec/gate_pass.py`, the circuit is 1,250 wires × 5,246,467 ticks, 7,144,857 CCX and T 50,013,999: 102,878 fewer ticks for 30,640 more CCX, and qubit-time 6,558,083,750, 1.92% below 2elliot's entry.
+
+## A 217-wire cap on the Euclid difference's ring
+
+`U6_RING` in `qec/point_add.py` caps the ring of clean tape wires that the Euclid difference's sweeps use; it is this branch's constant, which came in at 193 with `d9ecbbe`.
+`WIDE_RING` and `RING_BORROW`, which decide when a step takes the bit-level tree's wider ring instead, are 2elliot's.
+With the cap at 217, a step that the cap held to 193 wires takes up to 217 of the clean wires the pass has.
+217 is the best of the caps we ran from 193 to 289, not a proven optimum.
+`I2.ring` (`scripts/ring_k_check.py`) runs the Euclid step at widths 9 to 12 at every ring size from w - 2 to 2w, 54 circuits, on every input of the step domain, as built and after `qec/gate_pass.py`; each must equal the step at w - 2 and leave the ring and scratch clean.
+`I2.ring-control` starts the ring's last wire at 1, and the check must fail at every size in both forms.
+That exhaustive check reaches the step's code at every ring size only at widths 9 to 12; at 256 bits, the ring sizes the cap changes are reached only by the sampled checks.
+At G the pass cancels 22,340 pairs, against 21,344 with the cap at 193, and 4,357 of them are in the 53 definitions the cap changes.
+At G, after `qec/gate_pass.py`, the circuit is 1,250 wires × 5,244,059 ticks, 7,144,857 CCX and T 50,013,999: 2,408 fewer ticks at the same wires and CCX, and qubit-time 6,555,073,750, 1.97% below 2elliot's entry.

@@ -150,7 +150,7 @@ def shared_difference_u1(C, U, V, g0, g1, ring):
         C.cx(g0, c)
 
 
-U6_RING = 193
+U6_RING = 217
 # Give a step the bit-level tree's temps when that is more than U6_RING and the pass has them.
 WIDE_RING = True
 # Run the first Euclid step's control fans, constant add and rotation in log depth, on TICK0_SCRATCH
