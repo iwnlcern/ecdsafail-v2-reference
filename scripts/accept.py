@@ -50,7 +50,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "probe_primes": 7, "probe_lanes_per_variant": 4_161_536, "probe_toy_control_instances": 36,
             "post_pass_instances": 40, "post_pass_lanes": 514_700, "post_pass_control_instances": 22,
             "post_pass_control_caught_at_least": 16,
-            "ring_widths": 4, "ring_circuits": 54}
+            "ring_widths": 4, "ring_circuits": 54,
+            "add_reuse_layouts": 112, "add_reuse_control_layouts": 19, "add256_lanes": 197_890, "add256_carry_runs": 33_405}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -194,6 +195,10 @@ class Run:
             "post-pass": [["post_pass_check.py", "--out", w / "post_pass_check.json"]],
             "ring": [["ring_k_check.py", "--out", w / "ring_k_check.json"]],
             "ring-control": [["ring_k_check.py", "--control", "--out", w / "ring_k_check_control.json"]],
+            "add-reuse": [["add_reuse_check.py", "--out", w / "add_reuse_check.json"]],
+            "add-reuse-control": [["add_reuse_check.py", "--control", "--out", w / "add_reuse_check_control.json"]],
+            "add256": [["add256_check.py", "--out", w / "add256_check.json"]],
+            "add256-control": [["add256_check.py", "--control", "--out", w / "add256_check_control.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
             **{f"emit:{name}": [["emit.py", *args, "--out", w / "emit" / filename]] for name, (filename, args) in EMITS.items()},
@@ -516,6 +521,7 @@ def _ring_summary(run, group):
     else:
         problems += coverage("widths", summary["widths"], "ring_widths")
         problems += coverage("circuits", summary["circuits"], "ring_circuits")
+        problems += ["a width built fewer distinct circuits than ring sizes"] * (not summary["distinct_circuits_equal_sizes"])
     return p, summary, problems
 
 
@@ -539,6 +545,58 @@ def i2_ring_control(run):
         return Result(FAIL, "; ".join(problems), evidence)
     return Result(PASS, f"with the ring's last wire starting at 1, the step fails at every one of the {summary['circuits']} "
                         f"ring sizes, as built and after qec/gate_pass.py", evidence)
+
+
+def _summary(run, group, script):
+    p, = run.procs(group)
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"{script} exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"{script} printed no summary, see {p.log}")
+    return p, summary, problems
+
+
+def _result(p, summary, problems, note):
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    return Result(FAIL, "; ".join(problems), evidence) if problems else Result(PASS, note(summary), evidence)
+
+
+def i2_add_reuse(run):
+    p, summary, problems = _summary(run, "add-reuse", "add_reuse_check.py")
+    if summary is not None:
+        problems += coverage("layouts", summary["layouts"], "add_reuse_layouts")
+        problems += [f"{summary['failing_layouts']} layouts failed"] * bool(summary["failing_layouts"])
+    return _result(p, summary, problems, lambda s: f"the tick's add with its temps cut to one: all {s['layouts']} "
+                   f"layouts at n <= 7 exact on every input, {s['reusing_layouts']} of them reusing a temp")
+
+
+def i2_add_reuse_control(run):
+    p, summary, problems = _summary(run, "add-reuse-control", "add_reuse_check.py")
+    if summary is not None:
+        problems += coverage("layouts", summary["layouts"], "add_reuse_layouts")
+        problems += coverage("reusing layouts", summary["reusing_layouts"], "add_reuse_control_layouts")
+        problems += ["the failing layouts are not exactly the reusing ones"] * (not summary["failing_are_the_reusing"])
+    return _result(p, summary, problems, lambda s: f"with the add's temps returned dirty, exactly the "
+                   f"{s['failing_layouts']} layouts that reuse a temp fail")
+
+
+def i2_add256(run):
+    p, summary, problems = _summary(run, "add256", "add256_check.py")
+    if summary is not None:
+        problems += coverage("lanes", summary["lanes"], "add256_lanes")
+        problems += coverage("carry runs", summary["carry_runs"], "add256_carry_runs")
+        problems += ["the add failed on some lane"] * (not summary["exact"])
+    return _result(p, summary, problems, lambda s: f"the tick's add alone at n = 256 with layout {s['layout']}: "
+                   f"{s['lanes']:,} lanes ({s['carry_runs']:,} carry runs), exact as built and after qec/gate_pass.py")
+
+
+def i2_add256_control(run):
+    p, summary, problems = _summary(run, "add256-control", "add256_check.py")
+    if summary is not None:
+        problems += coverage("lanes", summary["lanes"], "add256_lanes")
+        problems += ["a form passed with an inner fix dropped"] * (not summary["control_fails_both"])
+    return _result(p, summary, problems, lambda s: "with one inner fix dropped in a block of 3, both forms fail")
 
 
 def i2_secp_flat(run):
@@ -689,6 +747,13 @@ CHECKS = (
           i2_post_pass, ("post-pass",)),
     Check("I2.ring", "exactness: the Euclid step at every ring size, as built and after the post-pass", i2_ring, ("ring",)),
     Check("I2.ring-control", "exactness: the ring check rejects a dirty ring wire", i2_ring_control, ("ring-control",)),
+    Check("I2.add-reuse", "exactness: the tick's add at n <= 7 with its temps reused", i2_add_reuse, ("add-reuse",)),
+    Check("I2.add-reuse-control", "exactness: the reuse check rejects temps returned dirty", i2_add_reuse_control,
+          ("add-reuse-control",)),
+    Check("I2.add256", "exactness: the tick's add alone at 256 bits on every carry run, as built and after the post-pass",
+          i2_add256, ("add256",)),
+    Check("I2.add256-control", "exactness: the 256-bit add check rejects a dropped inner fix", i2_add256_control,
+          ("add256-control",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,

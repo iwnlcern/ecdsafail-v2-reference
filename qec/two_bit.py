@@ -172,14 +172,15 @@ CUTS_255 = {
 MAX_BLOCKS = 11
 # The tick's add as a blocked-lookahead chain (add_or_shift_la) instead of the ripple.
 LOOKAHEAD_ADD = True
-# The add's temps and J copies: the wires P's tenth block adds at the tick's peak are idle here.
-LA_NTEMPS, LA_NCOPIES = 8, 6
+# The add's temps and J copies. 8 temps fit on wires idle at the tick's peak; each temp past 8 adds a wire to
+# the circuit, so 14 make it 1,256 wires.
+LA_NTEMPS, LA_NCOPIES = 14, 6
 # (size, count): that many wider blocks among F's / B's blocks of 2, or None for blocks of 2 only. An
 # r-bit block costs 4r - 3 CCX, so each chain step saved costs 3 CCX for any r (DESIGN.md, "Blocks of
 # 3 in the add's forward sweep"). Split between F and B, the sweep that runs at 7 ticks a step and
 # starves for temps differs by direction ("Blocks of 3 split between the sweeps").
-LA_F_WIDE = (3, 34)
-LA_B_WIDE = (3, 35)
+LA_F_WIDE = (3, 63)
+LA_B_WIDE = (3, 62)
 # The add's carry and t serve as temps in its sweeps; temps go out free-first under the tick model.
 LA_TOP_TEMPS = True
 LA_IDLE_TEMPS = True

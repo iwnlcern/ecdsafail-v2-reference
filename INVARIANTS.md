@@ -130,6 +130,20 @@ Any claim for this build must name both limits and the build refusal.
   It builds 40 circuits hierarchically and writes each with the depth pass: the 36 toy instances, and at 14 to 17 bits the largest prime with the tick's merged path and a prime-order curve, 514,700 lanes.
   Each must pass the exhaustive check, then pass it again after `qec/gate_pass.py`'s `main`.
   Its control removes one pair of the tree's gates that the pass may not cancel and then runs the pass, up to 20 tries a circuit; the check must catch one on at least 16 of the 22 circuits that build the tree.
+- `I2.ring` runs `scripts/ring_k_check.py`.
+  It first requires `U6_RING == 217`. For widths 9 to 12 and every ring size k from w - 2 to 2w, 54 circuits, it runs the Euclid step on every input of the step domain, as the flat circuit and as the hierarchical emission after `qec/gate_pass.py`, and requires each to equal the step at k = w - 2 on U, V, E and the cell and to leave the ring and scratch clean.
+  Each width must build as many distinct circuits as it has ring sizes.
+  At 256 bits, the ring sizes that `U6_RING` changes are reached only by the sampled rows.
+- `I2.ring-control` runs the same check with the ring's last wire starting at 1, and requires it to fail at every ring size in both forms.
+- `I2.add-reuse` runs `scripts/add_reuse_check.py`.
+  The tick's add takes its temps in turn, and at 256 bits later blocks take temps earlier blocks returned, which the toy rows never do.
+  The row runs every layout of blocks of 1 to 4 bits in either sweep at n = 4 to 7, 112 layouts, with the add's temps cut to one, on every input, against `scripts/add_or_shift_check.py`'s specification; 19 of the layouts reuse a temp.
+- `I2.add-reuse-control` returns the add's own temps dirty, and requires the failing layouts to be exactly the 19 that reuse one.
+- `I2.add256` runs `scripts/add256_check.py`.
+  It first requires `LA_F_WIDE == (3, 63)`, `LA_B_WIDE == (3, 62)` and `LA_NTEMPS == 14`, then builds the add alone at n = 256 as the tick calls it.
+  At J = 0 it runs every carry run, a carry generated at i, propagated through j and killed above, for every i < 255 and i <= j < 258, 33,405 lanes, then all-0 and all-1 words and R and 2^16 random lanes; at J = 1 the same words with random R: 197,890 lanes.
+  It requires the specification on every lane, as built and after `qec/gate_pass.py`.
+- `I2.add256-control` drops the fix of the top bit of F's first block of 3, compiled from `qec/two_bit.py`'s text, and requires both forms to fail.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 

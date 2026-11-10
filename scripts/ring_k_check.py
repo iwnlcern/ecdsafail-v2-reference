@@ -8,7 +8,8 @@ E), as scripts/sweep_check.py item 2 does for k = w - 2 and 2w, in two forms: th
 hierarchically, written by qec/emit.py with the depth pass on, run through qec/gate_pass.py's main() (the post-pass
 the board scores), parsed by qec/flatten.py and expanded by scripts/check.py's expand(). Each must equal the step at
 k = w - 2 on U, V, E and the cell, and leave the ring and scratch 0. U6_RING enters only through _ring_size, which
-picks k, so this covers what a change of U6_RING changes in the step; at 256 bits the ring sizes it changes are reached
+picks k, so this covers what a change of U6_RING changes in the step, and each width must build as many distinct
+circuits as it has ring sizes, so every size is a circuit of its own; at 256 bits the ring sizes it changes are reached
 only by the sampled checks. With --control the ring's last wire starts at 1, and the check must fail at every k in
 both forms. One JSON line per width; the last line is the summary. Exits 0 when the check holds (or, with
 --control, fails everywhere)."""
@@ -124,8 +125,10 @@ with tempfile.TemporaryDirectory() as tmp:
 summary = {"summary": True, "control": DIRTY, "u6_ring": point_add.U6_RING, "widths": len(rows),
            "circuits": sum(r["sizes"] for r in rows), "forms": ["flat", "post"], "exact": ok,
            "control_fails_everywhere": everywhere if DIRTY else None,
+           "distinct_circuits_equal_sizes": all(r["distinct_circuits"] == r["sizes"] for r in rows),
            "post_pass_records_cancelled": cancelled}
 if args.out:
     args.out.write_text(json.dumps({"rows": rows, "summary": summary}, indent=1) + "\n")
 print(json.dumps(summary))
-sys.exit(0 if (everywhere if DIRTY else ok) else 1)
+distinct = summary["distinct_circuits_equal_sizes"]
+sys.exit(0 if distinct and (everywhere if DIRTY else ok) else 1)

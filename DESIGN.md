@@ -834,3 +834,16 @@ With the cap at 217, a step that the cap held to 193 wires takes up to 217 of th
 That exhaustive check reaches the step's code at every ring size only at widths 9 to 12; at 256 bits, the ring sizes the cap changes are reached only by the sampled checks.
 At G the pass cancels 22,340 pairs, against 21,344 with the cap at 193, and 4,357 of them are in the 53 definitions the cap changes.
 At G, after `qec/gate_pass.py`, the circuit is 1,250 wires × 5,244,059 ticks, 7,144,857 CCX and T 50,013,999: 2,408 fewer ticks at the same wires and CCX, and qubit-time 6,555,073,750, 1.97% below 2elliot's entry.
+
+## More blocks of 3 in the tick's add
+
+The tick's add, its blocks of 3 in both sweeps, `_la_wide`, which spreads them, and the form of its counts and temps (`LA_F_WIDE`, `LA_B_WIDE`, `LA_NTEMPS`) are 2elliot's; the sections from "Blocks of 3 in the add's forward sweep" to "P's blocks after the faster add" describe them.
+This branch raises the counts from 34 in F and 35 in B to 63 and 62, and the temps from 8 to 14.
+At 256 bits F then has 97 chain steps and B 98, against 112 and 111, and each step saved costs 2,298 CCX, 3 for each of the add's 766 calls.
+That spends the T the probe tree leaves: the scored T is 50,464,407, 1,526 under the reference's 50,465,933, so one more step saved would not fit.
+Each temp past 8 adds a wire, and 14, at 1,256 wires, was the best of the counts we ran from 8 to 16, not a proven optimum; the effect is not monotone in the count.
+For every n below 108 these layouts equal 2elliot's.
+So the exhaustive checks reach the add's block types and adjacencies only at n <= 7: `scripts/add_or_shift_check.py` runs every layout there, and `I2.add-reuse` (`scripts/add_reuse_check.py`) runs those layouts with the add's temps cut to one, so that blocks take temps that others returned, with a control that returns them dirty and must fail exactly the layouts that reuse one.
+The 256-bit layout itself is reached by `I2.add256` (`scripts/add256_check.py`), which checks the add alone at n = 256 on every carry run, all-0 and all-1 inputs and 2^16 random lanes, at J = 0 and J = 1, as built and after `qec/gate_pass.py`, with a control that drops one inner fix; and by the sampled 256-bit rows.
+At G the raw emission has 7,210,499 CCX and T 50,473,493, 7,560 over the reference; `qec/gate_pass.py`, which is 2elliot's, cancels 1,298 of those CCX, so the scored method has 7,209,201 CCX and T 50,464,407.
+At G, after `qec/gate_pass.py`, the circuit is 1,256 wires × 5,055,456 ticks: 188,603 fewer ticks for 64,344 more CCX and 6 more wires, and qubit-time 6,349,652,736, 5.04% below 2elliot's entry.
