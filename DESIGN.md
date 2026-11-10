@@ -841,9 +841,18 @@ The tick's add, its blocks of 3 in both sweeps, `_la_wide`, which spreads them, 
 This branch raises the counts from 34 in F and 35 in B to 63 and 62, and the temps from 8 to 14.
 At 256 bits F then has 97 chain steps and B 98, against 112 and 111, and each step saved costs 2,298 CCX, 3 for each of the add's 766 calls.
 That spends the T the probe tree leaves: the scored T is 50,464,407, 1,526 under the reference's 50,465,933, so one more step saved would not fit.
-Each temp past 8 adds a wire, and 14, at 1,256 wires, was the best of the counts we ran from 8 to 16, not a proven optimum; the effect is not monotone in the count.
+Each temp past 8 adds a wire, and 14, at 1,256 wires, was the best of the counts we ran from 8 to 18, not a proven optimum; the effect is not monotone in the count.
 For every n below 108 these layouts equal 2elliot's.
 So the exhaustive checks reach the add's block types and adjacencies only at n <= 7: `scripts/add_or_shift_check.py` runs every layout there, and `I2.add-reuse` (`scripts/add_reuse_check.py`) runs those layouts with the add's temps cut to one, so that blocks take temps that others returned, with a control that returns them dirty and must fail exactly the layouts that reuse one.
-The 256-bit layout itself is reached by `I2.add256` (`scripts/add256_check.py`), which checks the add alone at n = 256 on every carry run, all-0 and all-1 inputs and 2^16 random lanes, at J = 0 and J = 1, as built and after `qec/gate_pass.py`, with a control that drops one inner fix; and by the sampled 256-bit rows.
+The 256-bit layout itself is reached by `I2.add256` (`scripts/add256_check.py`), which checks the add alone at n = 256 on every carry run, all-0 and all-1 inputs and 2^16 random lanes, at J = 0 and J = 1, as built and after `qec/gate_pass.py`, in which the pass cancels no pair, with a control that drops one inner fix; and by the sampled 256-bit rows.
+In the scored circuit the add is inlined in the tick's definitions, where the pass can cancel across its boundary, and at 256 bits those cancellations are reached only by `qcb` and the fresh roots on the post-passed method.
 At G the raw emission has 7,210,499 CCX and T 50,473,493, 7,560 over the reference; `qec/gate_pass.py`, which is 2elliot's, cancels 1,298 of those CCX, so the scored method has 7,209,201 CCX and T 50,464,407.
 At G, after `qec/gate_pass.py`, the circuit is 1,256 wires × 5,055,456 ticks: 188,603 fewer ticks for 64,344 more CCX and 6 more wires, and qubit-time 6,349,652,736, 5.04% below 2elliot's entry.
+
+## A wider search for the post-pass control
+
+`I2.post-pass`'s control removes one pair of the probe tree's gates that the pass may not cancel, runs the pass, and stops at the first removal the exhaustive check catches; the row requires a catch on at least 16 of the 22 circuits that build the tree, which is what the probe tree's commit measured at 20 tries.
+Commit 3's 14 temps change the toy and forced circuits' adds and so reorder each circuit's candidates, and at 20 tries the control then caught on 15; only forced16 changed, where the first 20 of its 640 candidates are harmless.
+Lowering the floor to 15 would let the next reordering lower it again, so the search was widened instead: `scripts/post_pass_check.py` now tries up to 64 candidates a circuit, and the floor stays 16.
+At 64 tries the control catches on all 22, the latest at its 48th try (forced16), with 337 tries that left the function unchanged, and all 40 circuits stay exact before and after the pass; its rows take 1,619 s in all, against 952 s at 20 tries.
+This changes no circuit: at G the emission, the post-passed method and the figures are those of the section above.

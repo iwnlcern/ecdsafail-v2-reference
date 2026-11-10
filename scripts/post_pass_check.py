@@ -12,7 +12,7 @@ does), and:
   post     runs qec/gate_pass.py's main() on that JSON and checks the result the same way;
   control  removes one pair the pass may not cancel (one of the tree's gates and its next copy, with a non-commuting
            gate between them on a shared wire) and then runs the same pass, one candidate at a time, CCX pairs first,
-           up to 20 an instance, until the check catches one; the row counts the tries that left the function
+           up to 64 an instance, until the check catches one; the row counts the tries that left the function
            unchanged (such a removal is wrong for the pass but harmless on that instance).
 The tree's gates are found by wrapping _probe_tree: each call's op range is kept with the block (the definition) it is
 recorded in, and its gates, in that definition's local wires, are the tree's keys. pairs_cancelled_with_tree_keys counts
@@ -151,7 +151,7 @@ def wrong_pairs(ops, keys):
     return sorted(found, key=lambda p: rank.get(ops[p[0]].get("op"), 3))
 
 
-TRIES = 20
+TRIES = 64
 
 
 def secp_shaped(bits):
