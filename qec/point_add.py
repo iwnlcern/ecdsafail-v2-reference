@@ -209,27 +209,39 @@ class DialogMultiplier:
             C.ccx(g0, carries[chain], g1)
         else:
             self._top_bit(C, top, g0, U[-1], V[-1], carries[chain], g1)
+        # Each in-place bit's selects go in before the chain reaches it. With S = carries[i] and B = V[i]:
+        # S ^= g1*B puts g1*p on the restore's control, B ^= g0*not(S) keeps the restore's
+        # product at S*p ^ g1*p (S*not(S) = 0), and the chain's CX cancels g1*p from the carry.
+        for i in reversed(range(kept + 1, chain)):
+            C.ccx(g1, V[i], carries[i])
+            C.x(carries[i])
+            C.ccx(g0, carries[i], V[i])
+            C.x(carries[i])
         for i in reversed(range(chain)):
-            # Restore a_i and select S_i while unwinding the carry chain.
+            # Restore a_i (a_i ^ g1*p_i on an in-place bit) while unwinding the carry chain.
             if i == 0:
                 C.cx(V[i], U[i])
                 C.cx(g0, V[i])
+                C.cx(carries[i], V[i])
+                C.cx(U[i], carries[i])
+                C.cx(carries[i], V[i])
             elif i <= kept:
                 C.cx(carries[i], U[i])
                 C.ccx(g0, U[i], V[i])
                 C.cx(carries[i], U[i])
-            else:
-                C.ccx(carries[i], V[i], U[i])
-                C.ccx(g0, carries[i], V[i])
-            C.cx(carries[i], V[i])
-            if i == 0 or i > kept:
-                C.cx(U[i], carries[i])
-            if i != 0:
+                C.cx(carries[i], V[i])
                 C.ccx(g1, V[i], U[i])
                 C.cx(g1, U[i])
-            C.cx(carries[i], V[i])
-            if i != 0:
+                C.cx(carries[i], V[i])
                 C.cx(g1, V[i])
+            else:
+                C.ccx(carries[i], V[i], U[i])
+                C.cx(U[i], carries[i])
+        for i in range(kept + 1, chain):
+            C.cx(U[i], V[i])
+            C.cx(g1, U[i])
+            C.cx(g0, V[i])
+            C.cx(g1, V[i])
         C.free([cin])
         for wire in V:
             C.x(wire)

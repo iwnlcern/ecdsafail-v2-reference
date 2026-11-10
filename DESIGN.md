@@ -600,3 +600,16 @@ The remaining CX from p to each bit waits until the block's last bit, so the car
 The first two bits take the same form with t, and every Prefix.write caller uses this identity, including the square.
 CCX, T and wires are unchanged; the extra X and CX gates trade operation count for shorter depth.
 At G this step retains 4,096 wires and 3,192,795 CCX, with 24,915,625 scheduled ticks and 12,064,427 expanded operations.
+
+### Selects outside the Euclid carry chain
+
+The unwind schedule of the section above is superseded here on the in-place bits; its parallel rotation and repeated-width composition remain unchanged.
+For each in-place bit, kept + 1 to chain - 1, let S = carries[i] = c_i XOR a_i, B = V[i] = p, and A = U[i].
+Before the carry reaches the bit, set S XOR= g1 AND B and B XOR= g0 AND NOT S.
+The restore A XOR= S AND B and chain CX S XOR= A then leave A = a_i XOR (g1 AND p) and S = c_i.
+Since S AND NOT S is zero, the early second select cannot change the restore product.
+After the chain, apply B XOR= A, A XOR= g1, B XOR= g0 and B XOR= g1.
+These recover the original selected outputs with the same three CCX per bit.
+The kept bits keep the tail of the section above, and bit zero, the top bit and the compare are as this step leaves them.
+The argument requires g1 implies g0, which still holds: `_top_bit` leaves H = g0 AND MAJ(a, b, c) on its domain.
+At G this step retains 4,096 wires and 3,192,795 CCX, with 19,766,653 scheduled ticks and 12,561,411 expanded operations.
