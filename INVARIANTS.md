@@ -119,6 +119,17 @@ Any claim for this build must name both limits and the build refusal.
 - `I2.toy-hier` runs the same check on the hierarchical emission. `check.py` parses the JSON text with `qec/flatten.py` and expands every call through its wire map and inverse flag, as the benchmark would. On each toy instance it also compares that expansion with the text `flatten.operations_json` writes. It then simulates the hierarchical toy file `scripts/emit.py` wrote, `toy127_circuit.hier.json`. The upload is hierarchical, so a broken call map would pass `I2.toy` and still upload a wrong circuit.
 - `I2.components` runs `scripts/component_check.py`. It checks the 256-bit adders, doubler, negation and multiplier on boundary inputs near q and 2^256 that random points almost never reach.
 - `I2.mutation` runs `scripts/mutation_control.py`. It confirms that the checker still rejects mutated circuits. At its fixed seed the reference catches 163 of 200 CCX-to-CX demotions, and the rest are equivalent circuits. The check fails below 163.
+- `I2.probe` runs `scripts/probe_check.py`.
+  The Bézout tick's probe (its first chain) computes e = AND(H) * the carry out of L plus the selected constant, by a carry-out tree that borrows H's wires with an X.
+  The row builds the probe's context as the tick does at the 7 secp-shaped primes 2^n - (2^k + d), n = 12 to 18, that have the merged path, a quiet run of at least 2 bits and at least 2 H bits, with P's and M's tops from the tick's idle allocator and the H wire that comes free first borrowed, and simulates every lane: every window and H value and every selector value, 4,161,536 lanes a variant.
+  The tree and the ripple chain it replaced must both give e on every lane, leave every other wire as it began, and have every borrowed wire read 1 wherever AND(H) = 1, the only lanes on which e can be 1.
+  Two controls must fail there: borrowing without the X, and the tree's P merge dropping one side.
+  The merge control, installed in the whole point add, must also fail `scripts/check.py`'s exhaustive toy check, so the toy rows reach the tree.
+- `I2.post-pass` runs `scripts/post_pass_check.py`.
+  The board scores the method after `qec/gate_pass.py`, and no other row runs that pass, so this row checks it on the probe tree.
+  It builds 40 circuits hierarchically and writes each with the depth pass: the 36 toy instances, and at 14 to 17 bits the largest prime with the tick's merged path and a prime-order curve, 514,700 lanes.
+  Each must pass the exhaustive check, then pass it again after `qec/gate_pass.py`'s `main`.
+  Its control removes one pair of the tree's gates that the pass may not cancel and then runs the pass, up to 20 tries a circuit; the check must catch one on at least 16 of the 22 circuits that build the tree.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 

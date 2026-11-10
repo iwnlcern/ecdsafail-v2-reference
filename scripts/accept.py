@@ -46,7 +46,10 @@ REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
-            "pass_instances": 2}
+            "pass_instances": 2,
+            "probe_primes": 7, "probe_lanes_per_variant": 4_161_536, "probe_toy_control_instances": 36,
+            "post_pass_instances": 40, "post_pass_lanes": 514_700, "post_pass_control_instances": 22,
+            "post_pass_control_caught_at_least": 16}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -186,6 +189,8 @@ class Run:
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
+            "probe": [["probe_check.py", "--out", w / "probe_check.json"]],
+            "post-pass": [["post_pass_check.py", "--out", w / "post_pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
             **{f"emit:{name}": [["emit.py", *args, "--out", w / "emit" / filename]] for name, (filename, args) in EMITS.items()},
@@ -452,6 +457,52 @@ def i2_pass(run):
     return Result(FAIL if problems else PASS, note, {"exit": p.rc, "instances": inst, "uploads": uploads, "problems": problems, "log": p.log})
 
 
+def i2_probe(run):
+    p, = run.procs("probe")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"probe_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"probe_check.py printed no summary, see {p.log}")
+    else:
+        problems += [f"failing rows: {summary['failed']}"] * bool(summary["failed"])
+        problems += coverage("primes", summary["primes"], "probe_primes")
+        problems += coverage("lanes per variant", summary["lanes_per_variant"], "probe_lanes_per_variant")
+        problems += coverage("toy control instances", summary["toy_control_instances"], "probe_toy_control_instances")
+        problems += ["the toy check passed the merge control"] * (not summary["toy_control_failing_instances"])
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"the probe's carry-out tree on every lane at {summary['primes']} secp-shaped primes "
+                        f"({summary['lanes_per_variant']:,} lanes), equal to the ripple it replaced; both controls fail "
+                        f"there, and the merge control fails the toy check on {summary['toy_control_failing_instances']} "
+                        f"of {summary['toy_control_instances']} instances", evidence)
+
+
+def i2_post_pass(run):
+    p, = run.procs("post-pass")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"post_pass_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"post_pass_check.py printed no summary, see {p.log}")
+    else:
+        problems += ["a check failed before or after the pass"] * (not summary["raw_and_post_exact"])
+        problems += coverage("instances", summary["instances"], "post_pass_instances")
+        problems += coverage("lanes", summary["lanes"], "post_pass_lanes")
+        problems += coverage("instances with the tree", summary["control_rows"], "post_pass_control_instances")
+        need = COVERAGE["post_pass_control_caught_at_least"]
+        problems += [f"the wrong cancel was caught on {summary['control_caught_rows']} instances, "
+                     f"fewer than {need}"] * (summary["control_caught_rows"] < need)
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"exact before and after qec/gate_pass.py on {summary['instances']} instances "
+                        f"({summary['lanes']:,} lanes); one wrong cancel in the probe tree's gates is caught on "
+                        f"{summary['control_caught_rows']} of the {summary['control_rows']} instances that build it",
+                  evidence)
+
+
 def i2_secp_flat(run):
     proc, row = run.secp_flat()
     lanes = 2 * (COVERAGE["secp_special_points"] + SECP_RANDOM_POINTS[False])
@@ -594,6 +645,10 @@ CHECKS = (
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
+    Check("I2.probe", "exactness: the Bezout tick's probe as a carry-out tree, on every lane at secp-shaped primes", i2_probe,
+          ("probe",)),
+    Check("I2.post-pass", "exactness: the scored post-pass on the probe tree, before and after, with a wrong cancel",
+          i2_post_pass, ("post-pass",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,

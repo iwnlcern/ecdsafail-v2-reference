@@ -789,3 +789,36 @@ The sections from "Blocks of 3 in the add's forward sweep" to "P's blocks after 
 Together, the full circuit has 1,250 wires, 7,114,217 CCX (T 49,799,519) and 5,387,028 ticks.
 After `qec/gate_pass.py` it has 5,349,345 ticks: qubit-time 6,686,681,250, against 7,334,902,500 for the combined head above and 7,909,085,166 for PR8.
 The two branches touch different functions, and their tick savings add up exactly.
+
+## Changes from 2elliot's and ab-godder's entries
+
+This branch builds on 2elliot's `cold-trees` entry (`elliot/comp-2elliot-pr12-b2284da7c963`), which built on ab-godder's `tick-parallel` entry (`mike/comp-ab-godder-pr8-c4994f3b4b23`), which built on the `v2-depth` entry.
+It keeps every change of both entries, and each is its author's work.
+From ab-godder's entry it keeps the five commits that change the Bézout tick:
+- the compare runs in up to 11 blocks on the tick's freed scratch, with cuts tuned to when wires come free (`0db514b`);
+- the tick's add is a blocked-lookahead chain (`510ac23`);
+- p is un-copied after the add in the order the rotation finishes the word's bits (`8cc7563`);
+- the tick's P is `PrefixR`, whose write runs its blocks in parallel (`7163a75`);
+- each Bézout tick hands its B1 mark to the next tick, and the final swap's wires come late (`6692a5e`).
+From 2elliot's entry it keeps all 28 commits from `116a377` to `435d287`, which the sections from "Narrow-width ripple in the Euclid difference" to "Round 2 together" describe.
+They include the post-pass `qec/gate_pass.py` (`116a377`), which every figure the board scores runs through, and the blocks of 3 in the tick add's sweeps (`66504b0`, `fcc7a30` and `241d751`).
+At G that entry is 1,250 wires × 5,349,345 ticks after `qec/gate_pass.py`, 7,114,217 CCX and T 49,799,519.
+The section after this one describes the change this branch makes on top of it.
+
+## The tick's probe as a carry-out tree
+
+The Bézout tick's first chain is a probe: it computes e = P.top * (the carry out of L plus the selected constant), and leaves every other wire as it was.
+At G it rippled 15 `_selected_carry` steps up, 12 below the quiet run and 3 above it, with one CCX across the quiet run through M, took one CCX into e, and rippled the same steps down.
+`_probe_tree` in `qec/two_bit.py` computes the same carry out by a tree.
+For each bit it puts the XOR of the active selectors on a temp k, forms g = L * k, and sets L ^= k, so L holds p; g and p are never both 1.
+The low bits below the quiet run merge in a balanced tree, with G = Gr ^ Pr * Gl and P = Pr * Pl formed only where a later merge reads it.
+M's top carries the result across the quiet run, the top bits ripple, e takes its CCX, and the recorded gates run backwards.
+Its temps come from the same `take()` the ripple used, which borrows the H wire that comes free first with an X and returns it with an X.
+That is sound because e can be 1 only where every H wire reads 1, so a borrowed wire is clean exactly where the result matters, whichever H wire it is.
+P's and M's tops come from the tick's idle allocator, which hands out only clean wires, so the tree never borrows a top.
+`I2.probe` (`scripts/probe_check.py`) checks the tree and the ripple on every lane at seven secp-shaped primes, in the tick's probe context, with controls for a borrow without its X and for a broken merge, and checks that the broken merge fails the exhaustive toy check.
+`I2.post-pass` (`scripts/post_pass_check.py`) checks the tree under the post-pass the board scores: 40 circuits, the toy rows and four 14- to 17-bit merged-path primes, are exact before and after `qec/gate_pass.py`, and one wrong cancel among the tree's gates is caught on 16 of the 22 that build the tree.
+That is a claim for the tree's code only; the pass and the rest of the circuit it acts on are 2elliot's.
+At G the pass cancels 21,344 pairs, against 21,312 on 2elliot's entry: 8 of them pair two of the tree's own gates, and 288 more pair an X of `take()` or `drop()`, which borrow and return H's wires while the tree runs, with another gate.
+The tick's second chain writes L, so it needs every carry and keeps the ripple.
+At G, after `qec/gate_pass.py`, the circuit is 1,250 wires × 5,246,467 ticks, 7,144,857 CCX and T 50,013,999: 102,878 fewer ticks for 30,640 more CCX, and qubit-time 6,558,083,750, 1.92% below 2elliot's entry.

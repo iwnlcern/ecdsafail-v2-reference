@@ -21,7 +21,7 @@ hold H's two top bits between the ticks, and nothing clean is held across them.
 from functools import lru_cache
 import heapq
 
-from .arith import Mod, _maj, _selected_carry, cswap, gt_into
+from .arith import Mod, _Gates, _emit, _maj, _selected_carry, cswap, gt_into
 
 
 @lru_cache(maxsize=None)
@@ -903,6 +903,80 @@ class TwoBitMod(Mod):
             rise(i)
         return chain
 
+    def _probe_tree(self, C, L, selectors, masks, M, top, e, take, drop, has_h):
+        """e ^= top * (carry out of L + the selected constant), as chain 1 computes it, by a carry-out tree.
+
+        Per bit, k = XOR of the active selectors on a temp, g = L*k, and L ^= k so L holds p. The low bits merge in
+        a balanced tree (G = Gr ^ Pr*Gl, which is Gr OR Pr*Gl since g and p are exclusive; P = Pr*Pl only where a
+        later merge reads it), M's top carries across the quiet run, and the high bits ripple. The record runs, e
+        takes its CCX, and the record runs backwards, so every wire but e is as before. Temps come from take()."""
+        a, b, w = *self.run, self.window
+        rec, temps = _Gates(), []
+
+        def tmp():
+            t = take()
+            temps.append(t)
+            return t
+
+        gen, prop = {}, {}
+        for i in list(range(a)) + list(range(b, w)):
+            active = [s for s, mask in zip(selectors, masks) if mask >> i & 1]
+            prop[i] = L[i]
+            gen[i] = None
+            if active:
+                k = tmp()
+                for s in active:
+                    rec.cx(s, k)
+                g = tmp()
+                rec.ccx(L[i], k, g)
+                rec.cx(k, L[i])
+                gen[i] = g
+
+        def seg(lo, hi, need_p):
+            if hi - lo == 1:
+                return gen[lo], prop[lo]
+            mid = (lo + hi) // 2
+            gl, pl = seg(lo, mid, need_p)
+            gr, pr = seg(mid, hi, True)
+            if gl is None:
+                g = gr
+            elif gr is None:
+                g = tmp()
+                rec.ccx(pr, gl, g)
+            else:
+                rec.ccx(pr, gl, gr)
+                g = gr
+            p = None
+            if need_p:
+                p = tmp()
+                rec.ccx(pr, pl, p)
+            return g, p
+
+        c = seg(0, a, False)[0] if a else None
+        if b > a and c is not None:
+            t = tmp()
+            rec.ccx(c, M.top, t)
+            c = t
+        for i in range(b, w):
+            if c is None:
+                c = gen[i]
+            elif gen[i] is None:
+                t = tmp()
+                rec.ccx(prop[i], c, t)
+                c = t
+            else:
+                rec.ccx(prop[i], c, gen[i])
+                c = gen[i]
+        _emit(C, rec.ops)
+        if c is not None:
+            if has_h:
+                C.ccx(top, c, e)
+            else:
+                C.cx(c, e)
+        _emit(C, reversed(rec.ops))
+        for t in reversed(temps):
+            drop(t)
+
     def _chain_down(self, C, L, selectors, masks, M, perch, chain, drop, write, take=None):
         a, b, w = *self.run, self.window
 
@@ -1159,13 +1233,8 @@ class TwoBitMod(Mod):
         C.ccx(k0, k1, three)
         selectors = [one, k0, k1, three]
         masks = [f, f ^ 2 * f, f ^ 3 * f, self.corner ^ 4 * f]
-        chain = self._chain_up(C, L, selectors, masks, M, {}, take)
         (e,) = C.alloc(1)
-        if H:
-            C.ccx(P.top, chain[w], e)
-        else:
-            C.cx(chain[w], e)
-        self._chain_down(C, L, selectors, masks, M, {}, chain, drop, False)
+        self._probe_tree(C, L, selectors, masks, M, P.top if H else None, e, take, drop, bool(H))
         if nxt is None:
             C.x(one)
         else:
