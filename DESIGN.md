@@ -541,3 +541,18 @@ The circuit at G loses 13,232 CCX: 11,136 in the four Euclid passes and 2,096 in
 `scripts/junk_check.py` runs M on every x at every odd prime below 600 for eleven junk budgets, and the square's compute on every Y at every prime below 16,384 where the fold applies for up to eight keep budgets.
 It also checks that the CCX saved is exactly 2 per junk wire used in M and 1 per kept wire in compute.
 
+## Depth changes on the junk-wire build
+
+This branch builds on abdowns's PR #14 (`lowt-junk` at `171738f`), which builds on ab-godder's PR #9 through our PR #10.
+The changes below cut scheduled depth, not CCX.
+Each keeps every stage's peak with no junk, M at 1,309 wires and the square at 3,045, so `_junk_budgets` still hands out 2,784 Euclid junk wires and 1,048 square wires, and the circuit at G stays at 3,192,795 CCX.
+ALT, FAN, ROT, DP, INC and SEL are ours, from `v2/lean`, ported onto this code; `cs` is ours too.
+
+### Euclid scratch scheduling
+
+On odd Euclid ticks, the pass holds the most recently freed wire around the step call, then returns it.
+Each step takes clean scratch and restores it to zero, so selecting another clean wire preserves the step function and its inverse on the same reachable domain.
+Alternating scratch lets the next carry sweep overlap the previous strip sweep without changing the arithmetic or the allocator.
+The hold sits around the step call, which now also passes the step its junk wires.
+It raises the Euclid pass's peak with no junk from 1,282 to 1,283 wires, still below the Bézout pass's 1,309, so the junk budget does not move.
+At G this step retains 4,096 wires and 3,192,795 CCX, with 32,924,026 scheduled ticks and 11,744,039 expanded operations.

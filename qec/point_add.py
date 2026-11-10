@@ -400,8 +400,11 @@ class DialogMultiplier:
                 kept = 0 if plain else min(len(junk), self.step_carries(w, top_clear, narrow))
                 keep_two = not plain and len(junk) > kept
                 J, junk = junk[:kept + keep_two], junk[kept + keep_two:]
+                # Alternate clean scratch so adjacent carry and strip sweeps can overlap.
+                hold = self.C.alloc(1) if i % 2 else []
                 self.C.apply(self._euclid_step(w, top_clear, narrow, last, kept, keep_two),
                              [U[:w], V, E, cell, J])
+                self.C.free(hold)
             G.extend(cell)
             next_width = self.widths[i + 1] if i + 1 < self.iters else self.pass_tail_width
             assert w - 1 <= next_width <= w
