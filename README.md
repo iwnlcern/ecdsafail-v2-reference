@@ -62,11 +62,11 @@ Python is stdlib only. The harness is a Rust crate whose dependencies are path r
 All numbers are measured unless marked as estimates.
 
 **This branch.**
-At G the circuit is 4,096 wires, 3,192,795 CCX, 22,349,565 T and 11,788,463 ops, measured from the unchanged emitter and baseline script.
-The scheduled depth is 31,415,772 ticks, giving qubit-time 128,679,002,112.
+At G the circuit is 4,096 wires, 3,192,795 CCX, 22,349,565 T and 11,532,839 ops, measured from the unchanged emitter and baseline script.
+The scheduled depth is 30,215,374 ticks, giving qubit-time 123,762,171,904.
 Wires × T is 91,543,818,240, which is 21.51% below the reference's 2,311 × 50,465,933.
 This branch spends every wire under the 4,096 cap on T, so wires × T is higher than on the branch it builds on.
-The hierarchical JSON for G is 35,613,007 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
+The hierarchical JSON for G is 35,429,540 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
 Two named limits apply.
 `I2.model`'s zero-caller row is narrowed from the reference's gate.
 The standalone multiplier is restricted to x in [1, q), and nonzero x at its entries rests on the kernel's flag code and the non-full build refusal.
@@ -90,7 +90,7 @@ The SubmittedMethod byte counts, validator, executor lanes, dirty/phase lanes an
 
 This branch builds on the stack’s three changes. One controlled comparison per Euclid step removes 787,456 CCX and 5,512,192 T at G. The exact merged Bézout reduction removes another 731,136 CCX and 5,117,952 T, with peak wires rising from 2,311 to 2,313. Reusing zero Euclid words and reversibly remapping x = 0 adds 1,524 CCX and 10,668 T while reducing the combined peak to 1,803 wires. The shared-chain Euclid step now holds the subtraction offset in the preceding tape cell and clears even-cell copies with a descending sweep. Relative to that stack it removes another 783,368 CCX and 5,483,576 T, with the same 1,803-wire peak. These CCX and T deltas are additive; wire counts are peaks. The bound and width schedule are unchanged, and `DESIGN.md` gives the held-offset, sweep, merged reduction and zero-remap arguments.
 
-Full `scripts/accept.py` on this source reports 13 pass, 0 fail and 1 pending (`I7.charge`), including R1. With seed 2026, [1]G through [8]G plus 16 random addends, the sample maximum is 34,362,937 T (16,103,052 below the reference sample maximum 50,465,989); the sample minimum is 34,362,573 T. This sample maximum is not a bound over every addend. All 263 definitions remain identical across addends. EuclidStep changes to a held-offset relation with first/later variants, and the tape sweep needs a new contract. EuclidPass retains its external relation but needs a new composition proof; BezoutStep is unchanged. DialogMul still needs the previously identified composition support. The standalone leaf probe establishes E1 for the 257 actual step definitions under its preconditions; it does not establish checker acceptance, sweep composition or DialogMul. Passing this repository's gate does not establish checker acceptance or qualification.
+The full acceptance gate includes I2.step in addition to the existing checks; I7.charge remains separately pending. With seed 2026, [1]G through [8]G plus 16 random addends, the sample maximum is 34,362,937 T (16,103,052 below the reference sample maximum 50,465,989); the sample minimum is 34,362,573 T. This sample maximum is not a bound over every addend. All 263 definitions remain identical across addends. EuclidStep changes to a held-offset relation with first/later variants, and the tape sweep needs a new contract. EuclidPass retains its external relation but needs a new composition proof; BezoutStep is unchanged. DialogMul still needs the previously identified composition support. The standalone leaf probe establishes E1 for the 257 actual step definitions under its preconditions; it does not establish checker acceptance, sweep composition or DialogMul. Passing this repository's gate does not establish checker acceptance or qualification.
 
 Where the 256-bit CCX go (`receipts/secp256k1_breakdown.json`). One dialog multiplier is 1,990,646 CCX: two Euclid passes of 395,262 each, one Bézout pass of 1,199,104, and 1,018 for the remaining zero-remap and cleanup operations. The old controlled word swap is removed; the word swap is now unconditional. The kernel uses the multiplier twice. The lambda-squared subtraction is 910,080 CCX. Flags and constant adds make up the remaining 17,611.
 

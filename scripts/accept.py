@@ -44,6 +44,7 @@ T_PER_CCX = 7
 ALLOWED_GATES = {"X", "CX", "CCX", "SWAP"}
 REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
+            "step_variants": 176, "step_controls": 3,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6}
 G_MULTIPLES = tuple(range(1, 9))
@@ -180,6 +181,7 @@ class Run:
         chunks = [c for c in (self.simulated[i::SECP_WORKERS] for i in range(SECP_WORKERS)) if c]
         self.specs = {
             "model": [["model_check.py"]],
+            "step": [["step_check.py", "--out", w / "step_check.json"]],
             "toy": [["check.py", *TOY_ARGS, "--out", w / "toy_exhaustive.json"]],
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "components": [["component_check.py"]],
@@ -321,6 +323,21 @@ def i2_model(run):
     note = "; ".join(problems) or (f"{len(small)} primes: Euclid trace and width schedule exhaustive over x, worst run within bound, "
                                    f"multiplier model right on every pair tried; secp256k1 bound {secp['bound']}, {secp['random_pairs']} random products")
     return Result(FAIL if problems else PASS, note, {"exit": p.rc, "rows": rows, "failing": bad, "log": p.log})
+
+
+def i2_step(run):
+    p, = run.procs("step")
+    rows = json_lines(p.stdout)
+    r = rows[-1] if rows else {}
+    controls = r.get("controls", {})
+    applied = [name for name, c in controls.items() if c["applied"]]
+    problems = [f"exit {p.rc}, see {p.log}"] * bool(p.rc) + coverage("step variants", r.get("variants"), "step_variants")
+    problems += coverage("step controls applied", r.get("controls_applied"), "step_controls")
+    problems += [f"{r['failing']} variants differ from the base's step"] * bool(r.get("failing"))
+    problems += [f"control {name} not rejected" for name in applied if not controls[name]["rejected"]]
+    note = (f"Euclid step equal to the base {str(r.get('base'))[:7]}'s on {r.get('variants')} variants, every clean input on "
+            f"the lanes its modes promise; controls {', '.join(applied) or 'none'} rejected") + "".join(f"; {m}" for m in problems)
+    return Result(FAIL if problems else PASS, note, {"exit": p.rc, **r, "problems": problems, "log": p.log})
 
 
 @functools.cache
@@ -574,6 +591,7 @@ EMIT_JOBS = tuple(f"emit:{name}" for name in EMITS) + ("addends",)
 CHECKS = (
     Check("I1", "interface: layout and wire count", i1_interface, EMIT_JOBS),
     Check("I2.model", "exactness: classical dialog model and iteration bound", i2_model, ("model",)),
+    Check("I2.step", "exactness: the Euclid step equals the base's on every small-width variant", i2_step, ("step",)),
     Check("I2.toy", "exactness: exhaustive gate-level check on toy curves and the emitted toy file", i2_toy, ("toy", "emit:toy127")),
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),

@@ -564,3 +564,20 @@ The free-wire contract makes those copies equal to the control, and the reverse 
 Using only the tick's own wires preserves its arity and peak space, while distributing the swap controls reduces scheduled depth without adding CCX gates.
 The port is the same lines on this tick: the tree fans `sw` as the tick computes it.
 At G this step retains 4,096 wires and 3,192,795 CCX, with 31,415,772 scheduled ticks and 11,788,463 expanded operations.
+
+### Euclid unwind and parallel rotation
+
+The unwind replaces `c ^= a; v ^= a; v ^= c` with `v ^= c; c ^= a`, an identity on every bit state.
+The complemented-control select `X(v); CCX(g1, v, a); X(v)` becomes `CCX(g1, v, a); CX(g1, a)`, while the empty X pair at bit zero disappears.
+Each final `CX(g1, V[i])` moves into its unwind bit, across operations that neither write g1 nor change V[i] except by X.
+This step's unwind has three branches, and the identity is derived for each.
+Bit zero and the in-place bits take it as written.
+A kept bit, whose carry sits on a junk wire, has no `c ^= a; v ^= a`, and takes the same tail without that CX: `v ^= c; a ^= g1 v; a ^= g1; v ^= c; v ^= g1`.
+The top bit stays out of the loop, as `_top_bit` leaves it, so its g1 CX stays after the loop.
+The conditional left rotation reverses the whole word and then all but its last bit, giving two layers of disjoint swaps with the same number of CCX gates.
+A reversible CX tree copies the rotation control onto available clean tape wires and uncomputes those copies after both layers.
+The pass supplies at most `(w - 1) // 2 - 1` copies from its unused, vacated or lent clean wires; sharing fewer copies round-robin preserves the same permutation.
+The last step returns before the strip, so it takes no copies, and the zero-copy case retains the original step shape and serial rotation, including the smallest widths.
+Under top_clear the lifted bit and V[w - 2] are both zero when two is set, so the strip rotates V[:w - 2] with the same permutation and swap count as the shortened serial strip.
+`scripts/step_check.py` checks the rewritten step against the base's on every small-width variant, with four wrong edits as controls (`INVARIANTS.md`, `I2.step`).
+At G this step retains 4,096 wires and 3,192,795 CCX, with 30,215,374 scheduled ticks and 11,532,839 expanded operations.

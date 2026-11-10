@@ -122,6 +122,12 @@ Any claim for this build must name both limits and the build refusal.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 
+- `I2.step` runs `scripts/step_check.py`.
+  It records `_euclid_step` from this tree and from the base, commit 171738f, read from the repository's history, at widths 2 to 7 and every variant of top_clear, narrow, last, kept (0, 1, half, full) and keep_two, and with the pass's own number of strip copies and with one.
+  Every input with a clean cell, clean junk and clean copies runs as bit-sliced lanes, on the lanes the step's modes promise; the outputs must agree lane for lane, every other wire must end zero, and the CCX counts must be equal.
+  On those lanes the base's moded step must also equal its general step.
+  Each of four controls copies this tree and makes one wrong edit to the unwind or the strip, and every control whose anchor is in this tree must fail; `COVERAGE` pins 176 variants and 3 controls applied.
+
 Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, and 2 x (6 + random R) lanes per simulated addend. A receipt that covers less fails, even with zero failures.
 
 **I3 gate set.** Every emitted primitive is X, CX, CCX or SWAP, with no measurement and no reset. The profile disables measurement cleanup, and a circuit of these four gates is a permutation with no phases. That is why basis-state exactness with clean scratch gives the exact unitary on superpositions. A single Z, CZ or measurement breaks that argument even when every basis check passes. I3 reads the emitted JSON at toy and 256-bit sizes and the JSON of every built addend, and counts the gate kinds in every toy instance and every expanded 256-bit upload.
