@@ -581,3 +581,13 @@ The last step returns before the strip, so it takes no copies, and the zero-copy
 Under top_clear the lifted bit and V[w - 2] are both zero when two is set, so the strip rotates V[:w - 2] with the same permutation and swap count as the shortened serial strip.
 `scripts/step_check.py` checks the rewritten step against the base's on every small-width variant, with four wrong edits as controls (`INVARIANTS.md`, `I2.step`).
 At G this step retains 4,096 wires and 3,192,795 CCX, with 30,215,374 scheduled ticks and 11,532,839 expanded operations.
+
+### Depth pass
+
+`write_circuit` runs `qec/depth_pass.py` on the hierarchical branch after the definition ids are fixed.
+Per definition, in emission order, it sorts each CCX's controls, list-schedules the definition's commutation DAG forward and backward under the board's lowering, and keeps the input unless a schedule has fewer standalone forward plus inverse ticks.
+It then gives each CCX the control order its own standalone forward and inverse runs prefer.
+It reads definition bodies only, so definitions stay identical over addends, and a second application returns its input.
+The flat branch never changes, so `check_hier.py` checks the builder with `depth_pass=False`, and `receipts/baseline/flat_ops.sha256` does not move.
+`scripts/pass_check.py` certifies every definition, sharing no code with the pass (`INVARIANTS.md`, `I2.pass`).
+At G this step retains 4,096 wires and 3,192,795 CCX, with 26,454,543 scheduled ticks and 11,532,839 expanded operations.

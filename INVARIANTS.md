@@ -128,6 +128,12 @@ Any claim for this build must name both limits and the build refusal.
   On those lanes the base's moded step must also equal its general step.
   Each of four controls copies this tree and makes one wrong edit to the unwind or the strip, and every control whose anchor is in this tree must fail; `COVERAGE` pins 176 variants and 3 controls applied.
 
+- `I2.pass` runs `scripts/pass_check.py` on toy127 and on secp256k1 at A = G.
+  Each circuit is built once and written with and without `qec/depth_pass.py`.
+  Every definition must keep, on every wire, the same sequence of role runs, with CCX controls sorted; the top level may differ only in CCX control order.
+  Equal run sequences mean the same permutation, because ops that share only read-only or XOR-target wires commute.
+  The check must also reject a body with its first adjacent non-commuting pair swapped, and the certified JSON must be the emitted upload byte for byte.
+
 Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, and 2 x (6 + random R) lanes per simulated addend. A receipt that covers less fails, even with zero failures.
 
 **I3 gate set.** Every emitted primitive is X, CX, CCX or SWAP, with no measurement and no reset. The profile disables measurement cleanup, and a circuit of these four gates is a permutation with no phases. That is why basis-state exactness with clean scratch gives the exact unitary on superpositions. A single Z, CZ or measurement breaks that argument even when every basis check passes. I3 reads the emitted JSON at toy and 256-bit sizes and the JSON of every built addend, and counts the gate kinds in every toy instance and every expanded 256-bit upload.

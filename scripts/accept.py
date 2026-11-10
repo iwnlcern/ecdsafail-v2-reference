@@ -46,7 +46,8 @@ REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "step_variants": 176, "step_controls": 3,
             "components": 52, "component_lanes": 13_867,
-            "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6}
+            "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
+            "pass_instances": 2}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -186,6 +187,7 @@ class Run:
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
+            "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
             **{f"emit:{name}": [["emit.py", *args, "--out", w / "emit" / filename]] for name, (filename, args) in EMITS.items()},
@@ -453,6 +455,20 @@ def i2_secp(run):
                         f"(inf, A, -A, -2A, 2A, 3A and {run.secp_points} random R, c in {{0,1}}); 0 failures", evidence)
 
 
+def i2_pass(run):
+    p, = run.procs("pass")
+    rows = json_lines(p.stdout)
+    inst = (rows[-1] if rows else {}).get("instances", [])
+    uploads = {"toy127": run.emitted("toy127.hier").summary["sha256"], "secp256k1 G": run.emitted("secp256k1_G.hier").summary["sha256"]}
+    problems = [f"exit {p.rc}, see {p.log}"] * bool(p.rc) + coverage("pass instances", len(inst), "pass_instances")
+    problems += [f"{r['name']}: {', '.join(r['failures'])} not certified" for r in inst if r["failures"]]
+    problems += [f"{r['name']}: control not rejected" for r in inst if not r["control_rejected"]]
+    problems += [f"{r['name']}: certified JSON is not the emitted upload" for r in inst if r.get("sha256") != uploads.get(r["name"])]
+    counts = ", ".join(f"{r['name']} {r['definitions']}" for r in inst)
+    note = f"depth pass keeps every wire's role runs in all definitions ({counts}); swap controls rejected" + "".join(f"; {m}" for m in problems)
+    return Result(FAIL if problems else PASS, note, {"exit": p.rc, "instances": inst, "uploads": uploads, "problems": problems, "log": p.log})
+
+
 def i2_secp_flat(run):
     proc, row = run.secp_flat()
     lanes = 2 * (COVERAGE["secp_special_points"] + SECP_RANDOM_POINTS[False])
@@ -598,6 +614,8 @@ CHECKS = (
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
+    Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,
+          ("pass", "emit:toy127.hier", "emit:secp256k1_G.hier")),
     Check("I3", "gate set: X, CX, CCX, SWAP only", i3_gate_set, ("toy", "secp-hier", "secp-flat") + EMIT_JOBS),
     Check("I5", "addend independence of definitions", i5_addend_independence, EMIT_JOBS),
     Check("I6", "cost at G and sample statistics over addends (report)", i6_cost, ("secp-hier", "secp-flat") + EMIT_JOBS),
