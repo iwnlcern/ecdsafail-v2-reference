@@ -556,3 +556,11 @@ Alternating scratch lets the next carry sweep overlap the previous strip sweep w
 The hold sits around the step call, which now also passes the step its junk wires.
 It raises the Euclid pass's peak with no junk from 1,282 to 1,283 wires, still below the Bézout pass's 1,309, so the junk budget does not move.
 At G this step retains 4,096 wires and 3,192,795 CCX, with 32,924,026 scheduled ticks and 11,744,039 expanded operations.
+
+### Parallel final coefficient swap
+
+The final coefficient swap copies its control through a breadth-first CX tree onto scratch wires already touched and freed by that tick.
+The free-wire contract makes those copies equal to the control, and the reverse tree clears them after the swap while restoring the allocator stack exactly.
+Using only the tick's own wires preserves its arity and peak space, while distributing the swap controls reduces scheduled depth without adding CCX gates.
+The port is the same lines on this tick: the tree fans `sw` as the tick computes it.
+At G this step retains 4,096 wires and 3,192,795 CCX, with 31,415,772 scheduled ticks and 11,788,463 expanded operations.
