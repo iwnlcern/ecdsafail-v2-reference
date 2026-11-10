@@ -613,3 +613,11 @@ These recover the original selected outputs with the same three CCX per bit.
 The kept bits keep the tail of the section above, and bit zero, the top bit and the compare are as this step leaves them.
 The argument requires g1 implies g0, which still holds: `_top_bit` leaves H = g0 AND MAJ(a, b, c) on its domain.
 At G this step retains 4,096 wires and 3,192,795 CCX, with 19,766,653 scheduled ticks and 12,561,411 expanded operations.
+
+### Independent swap-control copies
+
+The tree fan-out of the parallel final coefficient swap above is superseded here; its free-wire and allocator restoration contracts remain the same.
+Fan sw directly onto a star of scratch wires untouched since the compare began, and let only these copies control the coefficient swaps.
+Reverse the fan afterward and restore the free stack.
+This removes the serial tail formed when tree nodes both forwarded the control and controlled their own swap runs.
+At G this step retains 4,096 wires and 3,192,795 CCX, with 19,564,397 scheduled ticks and 12,550,691 expanded operations.
