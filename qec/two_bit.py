@@ -179,8 +179,8 @@ LA_NTEMPS, LA_NCOPIES = 14, 6
 # r-bit block costs 4r - 3 CCX, so each chain step saved costs 3 CCX for any r (DESIGN.md, "Blocks of
 # 3 in the add's forward sweep"). Split between F and B, the sweep that runs at 7 ticks a step and
 # starves for temps differs by direction ("Blocks of 3 split between the sweeps").
-LA_F_WIDE = (3, 63)
-LA_B_WIDE = (3, 62)
+LA_F_WIDE = (3, 84)
+LA_B_WIDE = (3, 84)
 # The add's carry and t serve as temps in its sweeps; temps go out free-first under the tick model.
 LA_TOP_TEMPS = True
 LA_IDLE_TEMPS = True

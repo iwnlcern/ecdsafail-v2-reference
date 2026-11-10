@@ -880,3 +880,14 @@ At 256 bits the class is reached only by those checks' seeded samples and by the
 The exactness claim is for the class's code on those inputs; the adders it now calls and the post-pass are 2elliot's.
 At G the raw emission has 7,082,064 CCX and T 49,574,448, and the pass cancels 23,370 pairs, against 22,341 before; in the class alone at secp256k1 it cancels 3,389.
 At G, after `qec/gate_pass.py`, the circuit is 1,256 wires × 5,112,574 ticks, 7,080,538 CCX and T 49,563,766: 128,663 fewer CCX for 57,118 more ticks at the same wires, and qubit-time 6,421,392,944, 1.13% above the previous commit and 3.97% below 2elliot's entry, with T 1.79% under the reference's 50,465,933.
+
+## The tick's add at its counts' cap
+
+The tick's add, its blocks of 3, `_la_wide`, which spreads them, and the form of its counts and temps are 2elliot's, as "More blocks of 3 in the tick's add" says.
+With the T the Karatsuba square-subtract frees, this branch raises the counts from 63 in F and 62 in B to 84 in each, which is `_la_wide`'s cap at n = 256: each sweep is 84 blocks of 3 and 3 ripple steps, 87 chain steps against 97 and 98.
+That is 21 steps, at 2,298 CCX each, 48,258 CCX; the temps stay 14, at 1,256 wires.
+After them 564,361 T is still unused, so the layout's cap, not T, now stops the counts.
+For every n below 108 these layouts still equal 2elliot's, so the exhaustive checks reach the add's block types and adjacencies only at n <= 7, as before.
+The 256-bit layout is reached by `I2.add256` (`scripts/add256_check.py`), which now requires 84 and 84 and checks the add alone at n = 256 on every carry run, as built and after `qec/gate_pass.py`, with its control, and by the sampled 256-bit rows.
+At G the raw emission has 7,130,322 CCX and T 49,912,254, 553,679 under the reference.
+At G, after `qec/gate_pass.py`, the circuit is 1,256 wires × 5,000,829 ticks, 7,128,796 CCX and T 49,901,572: 111,745 fewer ticks for 48,258 more CCX, and qubit-time 6,281,041,224, 1.08% below the commit before the square-subtract and 6.07% below 2elliot's entry.

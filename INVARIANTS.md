@@ -140,7 +140,7 @@ Any claim for this build must name both limits and the build refusal.
   The row runs every layout of blocks of 1 to 4 bits in either sweep at n = 4 to 7, 112 layouts, with the add's temps cut to one, on every input, against `scripts/add_or_shift_check.py`'s specification; 19 of the layouts reuse a temp.
 - `I2.add-reuse-control` returns the add's own temps dirty, and requires the failing layouts to be exactly the 19 that reuse one.
 - `I2.add256` runs `scripts/add256_check.py`.
-  It first requires `LA_F_WIDE == (3, 63)`, `LA_B_WIDE == (3, 62)` and `LA_NTEMPS == 14`, then builds the add alone at n = 256 as the tick calls it.
+  It first requires `LA_F_WIDE == (3, 84)`, `LA_B_WIDE == (3, 84)` and `LA_NTEMPS == 14`, then builds the add alone at n = 256 as the tick calls it.
   At J = 0 it runs every carry run, a carry generated at i, propagated through j and killed above, for every i < 255 and i <= j < 258, 33,405 lanes, then all-0 and all-1 words and R and 2^16 random lanes; at J = 1 the same words with random R: 197,890 lanes.
   It requires the specification on every lane, as built and after `qec/gate_pass.py`, in which the pass cancels no pair.
 - `I2.add256-control` drops the fix of the top bit of F's first block of 3, compiled from `qec/two_bit.py`'s text, and requires both forms to fail.

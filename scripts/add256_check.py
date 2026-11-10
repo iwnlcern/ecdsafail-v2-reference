@@ -2,7 +2,7 @@
 
     python3 scripts/add256_check.py [--control] [--out FILE]
 
-It first requires LA_F_WIDE == (3, 63), LA_B_WIDE == (3, 62) and LA_NTEMPS == 14, the layout this branch sets, and that
+It first requires LA_F_WIDE == (3, 84), LA_B_WIDE == (3, 84) and LA_NTEMPS == 14, the layout this branch sets, and that
 TwoBitMod._add_or_shift calls add_or_shift_la at secp256k1's n = 256. It builds that call on J, R (256 wires)
 and word (258) with fresh scratch, and checks it against scripts/add_or_shift_check.py's specification, computed with
 Python integers and no generator code: J and R unchanged, every scratch wire 0, and word = word + (R >> 1) mod 2^258
@@ -43,7 +43,7 @@ ap.add_argument("--control", action="store_true", help="drop one inner fix in a 
 ap.add_argument("--out", type=Path)
 args = ap.parse_args()
 
-assert tb.LA_F_WIDE == (3, 63) and tb.LA_B_WIDE == (3, 62) and tb.LA_NTEMPS == 14, \
+assert tb.LA_F_WIDE == (3, 84) and tb.LA_B_WIDE == (3, 84) and tb.LA_NTEMPS == 14, \
     (tb.LA_F_WIDE, tb.LA_B_WIDE, tb.LA_NTEMPS)
 assert tb.LOOKAHEAD_ADD and not tb.CDKM_ADD
 
