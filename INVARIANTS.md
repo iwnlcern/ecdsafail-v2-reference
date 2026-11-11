@@ -135,10 +135,10 @@ Any claim for this build must name both limits and the build refusal.
   For q = 7, 31 and 127 it builds `DialogMultiplier._body` and runs it on every (x, y) with x in [1, q) and y in [0, q), 16,974 lanes: the tree must equal the reference on x and y on every lane, leave every other wire at 0, and restore its inputs when reversed, and the control must differ.
   It also runs `scripts/component_check.py --bezout`, the Bézout tick's 62 exhaustive and boundary rows, which must pass on the tree and fail on the control.
 - `I2.prefix` runs `scripts/prefix_check.py`.
-  The tick builds P with `Prefix(C, H, cap=23)`, and the cap only takes effect when the doubling would build a block longer than it, so at small moduli it never fires and the exhaustive toy rows do not reach it.
-  The row builds `Prefix` standalone at lengths 221, 190, 163, 100, 64, 37, 5 and 2 and at caps none, 63, 48, 37, 30, 26, 23, 20, 16 and 13, with and without release/restore around a read of top, 160 cases on 84,000 lanes.
+  The tick builds P with `Prefix(C, H, cap=26, nor=True)`, and the cap only takes effect when the doubling would build a block longer than it, so at small moduli it never fires and the exhaustive toy rows do not reach it.
+  The row builds `Prefix` standalone at lengths 221, 190, 163, 100, 64, 37, 5 and 2 and at caps none, 63, 48, 37, 30, 26, 23, 20, 16 and 13, with and without release/restore around a read of top, and with `nor` off (the per-block clear) and on (the complemented-prefix clear), 320 cases on 168,000 lanes.
   On all ones, all ones with one 0 at each position, all ones below each block start and 0 at it, 0, and 64 random words, each with t = 0 and t = 1, it requires top = AND(bits) after construction, and bits + t mod 2^h, t unchanged and every other wire 0 after `write(t)`.
-  Its control takes a capped block's top from the first block's top instead of the last's, and must fail.
+  Its two controls must each fail: a capped block that takes the first block's top instead of the last's, and `write`'s complemented-prefix clears reading that prefix straight after building it, before P's higher blocks unwind.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 

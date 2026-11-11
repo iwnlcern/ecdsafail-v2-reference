@@ -630,3 +630,10 @@ It is none of PR #8's "Compare blocks with fresh wires", PR #12's "Compare block
 With the faster compare, P's cap moves from 37 to 23, the best cap we measured on this head: the 221-bit high word takes 12 blocks, 3, 7, 15, eight of 23 and 10, with three more top wires than at 37, and the compare takes no fresh wire.
 `I2.compare` (`scripts/compare_check.py`) runs M at q = 7, 31 and 127 on every input with the compare and with `gt_into` restored in its place, requires the two to agree on every lane with clean scratch and an exact inverse, and runs the Bézout tick's component rows; its control drops the forward combine's first gate and must fail both.
 At G the circuit is 1,252 wires × 14,801,270 ticks, with 4,067,306 CCX and T 28,471,142, giving qubit-time 18,531,190,040. The Euclid unwind is unchanged from the previous commit.
+
+## The complemented clear on the tick's P at cap 26
+
+The construction is credited to PR #17, its first public build. Our design of 2026-11-08 was unpublished, and this code is ours; no priority claim is made.
+The tick's P alone enables `nor=True`; every other prefix keeps its per-block clear. The complemented new bits rebuild the carry prefix and clear the saved carries before the borrowed scratch is restored. P uses cap 26; the carry-select comparison and Euclid unwind keep the preceding commit's maps.
+The square-subtract stays at 1,240 wires and 124,362 CCX. The prefix row exercises both flag settings, release and restore, with a broken cap and an early read as controls.
+At G this gives 1,262 wires × 14,003,558 ticks = 17,672,490,196, with 4,404,346 CCX and T 30,830,422.
