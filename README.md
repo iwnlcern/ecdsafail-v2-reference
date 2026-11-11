@@ -63,9 +63,9 @@ All numbers are measured unless marked as estimates.
 
 **This branch.**
 It builds on 2elliot's `cold-trees` entry, which built on ab-godder's `tick-parallel` entry, and `DESIGN.md` credits each change of theirs it keeps.
-At G the circuit is 1,256 wires, 7,130,322 CCX, 49,912,254 T and 18,530,837 ops, as `scripts/accept.py` reports it, with 24 pass, 0 fail and 1 pending (`I7.charge`).
-After `qec/gate_pass.py`, the post-pass the board scores, it is 1,256 wires × 5,000,829 ticks, 7,128,796 CCX and 49,901,572 T: qubit-time 6,281,041,224, which is 96.17% below the reference's 164,135,627,418, and T is 564,361 below the reference's 50,465,933; the raw emission's T is 553,679 below it.
-The hierarchical JSON for G is 78,923,343 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
+At G the circuit is 1,258 wires, 7,130,322 CCX, 49,912,254 T and 18,538,497 ops, as `scripts/accept.py` reports it, with 24 pass, 0 fail and 1 pending (`I7.charge`).
+After `qec/gate_pass.py`, the post-pass the board scores, it is 1,258 wires × 4,976,763 ticks, 7,128,796 CCX and 49,901,572 T: qubit-time 6,260,767,854, which is 96.19% below the reference's 164,135,627,418, and T is 564,361 below the reference's 50,465,933; the raw emission's T is 553,679 below it.
+The hierarchical JSON for G is 78,930,051 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
 Two named limits apply.
 `I2.model`'s zero-caller row is narrowed from the reference's gate.
 The standalone multiplier is restricted to x in [1, q), and nonzero x at its entries rests on the kernel's flag code and the non-full build refusal.

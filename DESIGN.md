@@ -891,3 +891,13 @@ For every n below 108 these layouts still equal 2elliot's, so the exhaustive che
 The 256-bit layout is reached by `I2.add256` (`scripts/add256_check.py`), which now requires 84 and 84 and checks the add alone at n = 256 on every carry run, as built and after `qec/gate_pass.py`, with its control, and by the sampled 256-bit rows.
 At G the raw emission has 7,130,322 CCX and T 49,912,254, 553,679 under the reference.
 At G, after `qec/gate_pass.py`, the circuit is 1,256 wires × 5,000,829 ticks, 7,128,796 CCX and T 49,901,572: 111,745 fewer ticks for 48,258 more CCX, and qubit-time 6,281,041,224, 1.08% below the commit before the square-subtract and 6.07% below 2elliot's entry.
+
+## More copies of J in the tick's add
+
+The tick's add reads J through copies of it, and their count, `LA_NCOPIES`, is 2elliot's setting.
+This branch raises it from 6 to 8 and changes nothing else; the two copies past 6 take two more wires, so the circuit is 1,258 wires.
+Each block of 3 reads the copies in turn, and we measured 8 and 10 at these blocks: 10 copies give 4,970,532 ticks at 1,260 wires, a higher qubit-time than 8.
+We have not shown why more copies shorten the add's critical path.
+The copies are CX fan-outs, so CCX and T are unchanged: at G the raw emission has 7,130,322 CCX and T 49,912,254, and the scored method 7,128,796 CCX and T 49,901,572, 564,361 under the reference.
+The toy-127 receipt changes as well as secp256k1's, so the exhaustive toy rows and `I2.post-pass`'s circuits run the new copies; `I2.add-reuse` runs its layouts at the function's default 6 copies.
+At G, after `qec/gate_pass.py`, the circuit is 1,258 wires × 4,976,763 ticks: 24,066 fewer ticks for 2 more wires, and qubit-time 6,260,767,854, 0.32% below the previous commit and 6.37% below 2elliot's entry.
