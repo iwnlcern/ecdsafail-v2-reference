@@ -44,7 +44,7 @@ CONTROL_PRIME = 65_521
 WIDE_PRIMES = ((1 << 128) - 159, SECP256K1.q)
 SAMPLE_SEEDS = (2041, 7331, 6062)
 SAMPLE_RANDOM_Y = 300
-SECP_STANDALONE = {"wires": 1240, "ccx": 124_362}
+SECP_STANDALONE = {"wires": 1246, "ccx": 128_630}
 
 
 class Harness(NamedTuple):

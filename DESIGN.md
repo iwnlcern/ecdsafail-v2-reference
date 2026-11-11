@@ -641,3 +641,14 @@ It is none of PR #8's "Compare blocks with fresh wires", PR #12's "Compare block
 With the faster compare, P's cap moves from 37 to 23, the best cap we measured on this head: the 221-bit high word takes 12 blocks, 3, 7, 15, eight of 23 and 10, with three more top wires than at 37, and the compare takes no fresh wire.
 `I2.compare` (`scripts/compare_check.py`) runs M at q = 7, 31 and 127 on every input with the compare and with `gt_into` restored in its place, requires the two to agree on every lane with clean scratch and an exact inverse, and runs the Bézout tick's component rows; its control drops the forward combine's first gate and must fail both.
 At G the circuit is 1,252 wires × 10,302,100 ticks, with 5,328,522 CCX and T 37,299,654: 2,215,342 fewer ticks for 594,416 more CCX and 3 more wires, and qubit-time 12,898,229,200, 17.50% below the previous commit and 47.88% below PR #11's.
+
+## The P write's carries cleared from a complemented prefix
+
+`Prefix.write` used to clear each block's carry with one CCX as it went.
+The carries are now cleared against a prefix rebuilt on the complemented new bits: each block's carry a·t is still on its top, and a·t = t·AND(the complemented new bits below the block), so the write builds a prefix of the complemented bits and clears each carry from it as that prefix unwinds top down, reading a block's top only once every block above it is unwound.
+PR #17 (abdowns) built this clear first in public, in its write.
+We designed the same clear on 2026-11-08 and did not publish it, so the construction is credited to PR #17, and this code is ours.
+With the clears, P's cap moves from 23 to 26, the best cap we measured on this head.
+`I2.prefix` now has a second control, `write`'s clears read straight after the complemented prefix is built, before P's higher blocks unwind, and it must fail.
+Every `Prefix.write` takes the clear, so the square-subtract's write in `KaratsubaMulsub.fold_b` does too: at secp256k1 the square-subtract alone is now 1,246 wires and 128,630 CCX, against 1,240 and 124,362, and `scripts/karatsuba_check.py` pins the new pair.
+At G the circuit is 1,262 wires × 9,674,607 ticks, with 5,698,938 CCX and T 39,892,566: 627,493 fewer ticks for 370,416 more CCX and 10 more wires, and qubit-time 12,209,354,034, 5.34% below the previous commit and 50.67% below PR #11's.

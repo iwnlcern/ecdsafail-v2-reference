@@ -708,7 +708,7 @@ CHECKS = (
           i2_compare, ("compare",)),
     Check("I2.u6", "exactness: the Euclid unwind run backwards on its domain, with the toy reach and two dropped lines as controls",
           i2_u6, ("u6",)),
-    Check("I2.prefix", "exactness: Prefix with a block cap at the tick's lengths, with a broken capped block as control",
+    Check("I2.prefix", "exactness: Prefix with a block cap at the tick's lengths, with a broken capped block and early NOR clears as controls",
           i2_prefix, ("prefix",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),

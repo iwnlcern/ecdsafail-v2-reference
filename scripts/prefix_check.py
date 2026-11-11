@@ -10,26 +10,33 @@ around a read of top (as M uses it), and checks bit-sliced over lanes:
   after write(t)      bits = bits + t mod 2^h, t unchanged, every other wire 0.
 Lanes: all ones, all ones with one 0 at each position, all ones below each block start and 0 at it, 0, and 64
 random words, each with t = 0 and t = 1.
-Control. `cap`: a capped block takes its top from the first block's top instead of the last's; it must fail.
+Controls, each of which must fail:
+  cap    a capped block takes its top from the first block's top instead of the last's;
+  early  `write`'s NOR clears read the complemented prefix straight after building it, before P's higher blocks
+         unwind (a copy of this tree's `qec` with that one region of `Prefix.write` replaced).
 The last line printed is a JSON summary.
 """
 import argparse
 import json
 import os
 import random
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONTROLS = ("cap",)
+CONTROLS = ("cap", "early")
+EARLY = ("        # Each block's carry a*t is still on its top, and a*t = t*AND(~new bits below the block). Build a prefix of\n        # the complemented bits and clear each carry from it as that prefix unwinds top down: a block's top is read\n        # only once every block above it is unwound, as in write above.\n        for w in bits:\n            C.x(w)\n        N = Prefix(C, bits, self.cap)\n        for (_, p, _, _, _), (na, np_, x, u, v) in zip(reversed(self.blocks), reversed(N.blocks)):\n            C.ccx(t, na, p)\n            C.ccx(na, v, np_)\n            for i in reversed(range(1, len(x))):\n                C.ccx(x[0] if i == 1 else u[i - 2], x[i], u[i - 1])\n            for w in reversed(u):\n                C.x(w)\n            C.free([np_])\n        C.ccx(bits[0], bits[1], N.first)\n        C.free([N.first])\n",
+         "        # Each block's carry a*t is still on its top: a*t = t*AND(~new bits below the block), so clear the carries\n        # from a prefix of the complemented bits, built and unbuilt here, instead of one block at a time above.\n        from .builder import CX as _CX, X as _X\n        for w in bits:\n            C.x(w)\n        start = len(C.prims)\n        N = Prefix(C, bits, self.cap)\n        built = C.prims[start:]\n        for (_, p, _, _, _), (na, _, _, _, _) in zip(self.blocks, N.blocks):\n            C.ccx(t, na, p)\n        for q in range(len(built) - 4, -1, -4):\n            op, i, j, k = built[q:q + 4]\n            if op == _X:\n                C.x(i)\n            elif op == _CX:\n                C.cx(i, j)\n            else:\n                C.ccx(i, j, k)\n        C.free([N.first] + [np_ for _, np_, _, _, _ in N.blocks])\n")
 
 
-def worker(control):
-    sys.path.insert(0, str(ROOT))
+def worker(control, tree):
+    sys.path.insert(0, str(tree))
     import qec.two_bit as tb
     from qec.builder import CCX, CX, SWAP, X, Circuit
-    assert tb.__file__.startswith(str(ROOT) + os.sep)
+    assert tb.__file__.startswith(str(tree) + os.sep)
     if control == "cap":
         import inspect
         src = inspect.getsource(tb.Prefix.__init__)
@@ -107,8 +114,9 @@ def worker(control):
     print(json.dumps({"control": control, "cases": cases, "lanes": lanes, "failures": total}))
 
 
-def spawn(control):
-    p = subprocess.run([sys.executable, "-I", "-B", __file__, "--worker", control or "none"], capture_output=True, text=True)
+def spawn(control, tree=ROOT):
+    p = subprocess.run([sys.executable, "-I", "-B", __file__, "--worker", control or "none", "--tree", str(tree)],
+                       capture_output=True, text=True)
     lines = [l for l in p.stdout.splitlines() if l.startswith("{")]
     if p.returncode or not lines:
         return {"control": control, "error": f"exit {p.returncode}: {p.stderr.strip()[-600:]}"}
@@ -118,13 +126,24 @@ def spawn(control):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--worker")
+    ap.add_argument("--tree", type=Path, default=ROOT)
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
     if args.worker:
-        worker(None if args.worker == "none" else args.worker)
+        worker(None if args.worker == "none" else args.worker, args.tree.resolve())
         return
     check = spawn(None)
-    controls = {c: spawn(c) for c in CONTROLS}
+    controls = {"cap": spawn("cap")}
+    with tempfile.TemporaryDirectory() as td:
+        shutil.copytree(ROOT / "qec", Path(td) / "qec", ignore=shutil.ignore_patterns("__pycache__"))
+        p = Path(td) / "qec" / "two_bit.py"
+        text = p.read_text()
+        if text.count(EARLY[0]) != 1:
+            controls["early"] = {"control": "early", "error": f"anchor matches {text.count(EARLY[0])} times"}
+        else:
+            p.write_text(text.replace(*EARLY))
+            controls["early"] = spawn(None, Path(td).resolve())
+            controls["early"]["control"] = "early"
     problems = []
     if "error" in check:
         problems.append(f"check: {check['error']}")
