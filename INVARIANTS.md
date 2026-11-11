@@ -304,3 +304,11 @@ The merged Euclid sweep starts at mark(T - 2) and carries one mark equal to NOT 
 Each update toggles the mark by NOT g_(k-1) AND (g_k XOR g_(k-2)), so every g read is still raw.
 The original carried-mark construction saved 382 CCX per Euclid pass at 384 ticks.
 The endpoint identities and skipped terminal transition now remove four further CCX per pass, sixteen per point addition; nonmerged sweeps use the endpoint identities without the merged terminal skip.
+
+## Critical-hop search
+
+The scored path emits the hierarchical circuit, wraps it as the board guide does, then runs `scripts/cp_search.py --max-evals 40000`, with no post-pass.
+`I2.search` checks the independently implemented certificate for all 263 reordered definitions and the standalone forward-plus-inverse ticks, 494,210 before and 484,213 after. On every wire, each definition keeps the same sequence of role runs and gates, with CCX controls sorted, and the rest of the upload is unchanged. The certified emission must be the same bytes the gate emits.
+`I2.search-control` requires an adjacent non-commuting swap in each reordered definition to be refused, all 263.
+`I2.search-toy` checks 22 toy point additions, 9,812 lanes, in emitted, wrapped and searched form; all forms must be exact, and the search must change each instance. `I2.search-toy-control` requires an adjacent non-commuting swap in a searched definition to be caught in all 22 instances.
+The search keeps every gate; it changes no arithmetic, wire count, CCX, T or expanded ops charge.
