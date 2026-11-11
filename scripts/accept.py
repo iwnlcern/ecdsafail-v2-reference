@@ -51,7 +51,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "karatsuba_piece_lanes": 60, "karatsuba_controls": 12,
             "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 183,
             "prefix_cases": 160, "prefix_lanes": 84_000,
-            "u6_rows": 161, "u6_toy_instances": 36, "u6_reach": 32}
+            "u6_rows": 161, "u6_toy_instances": 36, "u6_reach": 32,
+            "compare_lanes": 16_974, "compare_component_rows": 62}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -193,6 +194,7 @@ class Run:
             "karatsuba": [["karatsuba_check.py", "--out", w / "karatsuba_check.json"], ["karatsuba_mutation.py"]],
             "prefix": [["prefix_check.py", "--out", w / "prefix_check.json"]],
             "u6": [["u6_check.py", "--out", w / "u6_check.json"]],
+            "compare": [["compare_check.py", "--out", w / "compare_check.json"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
@@ -426,6 +428,26 @@ def i2_mutation(run):
     problems = [f"exit {p.rc}, see {p.log}"] * bool(p.rc) + coverage("trials", trials, "mutation_trials")
     note = f"{caught} of {trials} CCX-to-CX demotions caught at the fixed seed, at least {need} required" + "".join(f"; {m}" for m in problems)
     return Result(FAIL if problems or caught < need else PASS, note, evidence)
+
+
+def i2_compare(run):
+    p, = run.procs("compare")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"compare_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"compare_check.py printed no summary, see {p.log}")
+    else:
+        problems += summary["problems"]
+        problems += coverage("lanes", summary["lanes"], "compare_lanes")
+        problems += coverage("component rows", summary["components"]["rows"], "compare_component_rows")
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    return Result(PASS, f"M with the 7-block compare equals M with gt_into on every input at q = 7, 31 and 127, "
+                        f"{summary['lanes']:,} lanes, scratch clean and inverse exact; {summary['components']['rows']} Bezout "
+                        f"component rows pass; a dropped combine gate differs at q = {summary['control differs at']} and fails "
+                        f"{len(summary['components control']['failing rows'])} component rows", evidence)
 
 
 def i2_u6(run):
@@ -682,6 +704,8 @@ CHECKS = (
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
     Check("I2.karatsuba", "exactness: the Karatsuba square-subtract, forced at small primes and at full width", i2_karatsuba,
           ("karatsuba",)),
+    Check("I2.compare", "exactness: the tick's block compare against gt_into on M, with a dropped combine gate as control",
+          i2_compare, ("compare",)),
     Check("I2.u6", "exactness: the Euclid unwind run backwards on its domain, with the toy reach and two dropped lines as controls",
           i2_u6, ("u6",)),
     Check("I2.prefix", "exactness: Prefix with a block cap at the tick's lengths, with a broken capped block as control",
