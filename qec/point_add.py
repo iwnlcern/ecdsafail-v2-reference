@@ -9,6 +9,24 @@ from .two_bit import TwoBitMod
 from .model import tick_bound, tick_widths
 from . import block0_code, tail_code, tape_block
 from .tape_block import FREE, TICKS
+from array import array
+from .builder import CCX, CX
+from .curve import SECP256K1, SECP256K1_G
+
+# K1: in cmodadd_const(ctrl, 3a, b) at secp256k1's G, the CCX pair (b[254], ctrl) at ops 2929 and 5373 of the
+# call, the selected add's carry clear and the second comparison's carry, equals CX from ctrl on every b < q, the
+# call's contract, and either ctrl (scripts/k1_check.py, a BDD over (ctrl, b)). Keyed by (q, value mod q), so
+# every other curve and addend emits as before.
+_K1_CUTS = {(SECP256K1.q, 3 * SECP256K1_G[0] % SECP256K1.q): (2929, 5373)}
+
+
+def _cut_k1(C, start, q, value, ctrl, b):
+    """Turn the proven CCX pair of the cmodadd_const call that began at op `start` into CX from ctrl."""
+    for pos in _K1_CUTS.get((q, value % q), ()):
+        j = start + 4 * pos
+        op, x, y, t = C.prims[j:j + 4]
+        assert (op, x, y) == (CCX, b[254], ctrl), (pos, op, x, y)
+        C.prims[j:j + 4] = array("i", (CX, ctrl, t, t))
 
 
 def _fanout(C, src, copies):
@@ -858,7 +876,9 @@ class ControlledPointAdd:
         self.M.apply(Xr, Yr, inverse=True)
         (gen,) = C.alloc(1)
         recode(inverse=True)
+        start = len(C.prims) // 4
         mod.cmodadd_const(C, gen, 3 * a, Xr)
+        _cut_k1(C, 4 * start, q, 3 * a, gen, Xr)
         self._mulsub(gen, Yr, Xr)
         recode()
         C.free([gen])

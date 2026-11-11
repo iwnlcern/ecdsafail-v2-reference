@@ -134,6 +134,12 @@ Any claim for this build must name both limits and the build refusal.
   Equal run sequences mean the same permutation, because ops that share only read-only or XOR-target wires commute.
   The check must also reject a body with its first adjacent non-commuting pair swapped, and the certified JSON must be the emitted upload byte for byte.
 
+- `I2.k1` runs `scripts/k1_check.py`.
+  The table `_K1_CUTS` must have one entry, at secp256k1 and 3 G.x mod q, and each listed op of the block `cmodadd_const(ctrl, 3a, b)` recorded alone must be CCX(b[254], ctrl); the block's CCX on those controls must be exactly the listed pair and the control pair, ops 2920 and 5378.
+  The block runs symbolically as binary decision diagrams over (ctrl, b_0 .. b_255); the pair cut to CX from ctrl must leave every wire the same function on every b < q, the call's contract, for both values of ctrl, while each half alone and the control pair must not.
+  G is built hierarchically with the table and with it empty: the definitions must be identical, and the top level must differ at exactly the two ops.
+  No other addend of the gate's sample may have a table key; `COVERAGE` pins one entry.
+
 Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, and 2 x (6 + random R) lanes per simulated addend. A receipt that covers less fails, even with zero failures.
 
 **I3 gate set.** Every emitted primitive is X, CX, CCX or SWAP, with no measurement and no reset. The profile disables measurement cleanup, and a circuit of these four gates is a permutation with no phases. That is why basis-state exactness with clean scratch gives the exact unitary on superpositions. A single Z, CZ or measurement breaks that argument even when every basis check passes. I3 reads the emitted JSON at toy and 256-bit sizes and the JSON of every built addend, and counts the gate kinds in every toy instance and every expanded 256-bit upload.

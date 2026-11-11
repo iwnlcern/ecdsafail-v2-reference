@@ -632,3 +632,15 @@ At secp256k1 the level is 8: 348 of the 384 steps keep 8 carries each, 2,784 in 
 Each junk wire still saves one CCX wherever it goes, so CCX does not move.
 Ticks do; our reading, not measured, is that a kept bit takes its restore off the step's serial unwind, and with kept bits at the bottom of every step, each step's low bits are done sooner for the next step's chain.
 At G this step retains 4,096 wires and 3,192,795 CCX, with 19,240,125 scheduled ticks and 12,550,851 expanded operations.
+
+### Two kernel CCX at G become CX
+
+K1 is ours: a scan of the kernel's constant adds that we ran on 2026-11-03 found it, a BDD over (gen, X) proved it then, and it is checked again on this code, by that BDD and separately by z3.
+It is the only CCX change on this branch, and the whole of its T win over the base: 2 CCX, 14 T.
+In `cmodadd_const(gen, 3a, X)` at secp256k1's G, two CCX on (X[254], gen), ops 2929 and 5373 of the call, are the selected add's carry clear and the second comparison's carry.
+Together they equal CX from gen, exactly on every X < q, the call's contract; X is canonical there, as the multiplier's contract already requires, so the cut adds no condition the circuit did not rest on.
+The cut is keyed to G's constant: `_K1_CUTS` is a one-entry table keyed by (q, 3a mod q), so it applies at A = G only, and every other curve and addend emits as before.
+`_cut_k1` asserts that each listed op is CCX(X[254], gen) before it replaces it.
+`scripts/k1_check.py` proves the pair by BDD over (gen, X) on every X < q and either gen, and rejects each half alone and the one other CCX pair on the same controls, ops 2920 and 5378 (`INVARIANTS.md`, `I2.k1`); a separate z3 proof gives the same verdicts.
+The cut is at the top level, so all definitions stay identical over addends.
+At G this step gives 4,096 wires and 3,192,793 CCX, 22,349,551 T, with 19,240,111 scheduled ticks and 12,550,851 expanded operations.

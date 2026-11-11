@@ -44,7 +44,7 @@ T_PER_CCX = 7
 ALLOWED_GATES = {"X", "CX", "CCX", "SWAP"}
 REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
-            "step_variants": 176, "step_controls": 3,
+            "step_variants": 176, "step_controls": 3, "k1_cuts": 1,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
             "pass_instances": 2}
@@ -183,6 +183,7 @@ class Run:
         self.specs = {
             "model": [["model_check.py"]],
             "step": [["step_check.py", "--out", w / "step_check.json"]],
+            "k1": [["k1_check.py", "--seed", seed, "--sample", sample, "--out", w / "k1_check.json"]],
             "toy": [["check.py", *TOY_ARGS, "--out", w / "toy_exhaustive.json"]],
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "components": [["component_check.py"]],
@@ -339,6 +340,21 @@ def i2_step(run):
     problems += [f"control {name} not rejected" for name in applied if not controls[name]["rejected"]]
     note = (f"Euclid step equal to the base {str(r.get('base'))[:7]}'s on {r.get('variants')} variants, every clean input on "
             f"the lanes its modes promise; controls {', '.join(applied) or 'none'} rejected") + "".join(f"; {m}" for m in problems)
+    return Result(FAIL if problems else PASS, note, {"exit": p.rc, **r, "problems": problems, "log": p.log})
+
+
+def i2_k1(run):
+    p, = run.procs("k1")
+    rows = json_lines(p.stdout)
+    r = rows[-1] if rows else {}
+    v = r.get("verdicts", {})
+    problems = [f"exit {p.rc}, see {p.log}"] * bool(p.rc) + coverage("K1 table entries", r.get("entries"), "k1_cuts")
+    problems += list(r.get("problems", []))
+    problems += ["no verdicts"] * (not v)
+    note = (f"K1's CCX pair proven equal to CX from gen on every b < q and either gen by a BDD over the kernel block at G; "
+            f"each half alone and the control pair refused; {r.get('definitions')} definitions unchanged, "
+            f"{len(r.get('top level changes', []))} top-level ops changed at G, no other of {r.get('addends')} sampled addends keyed")
+    note += "".join(f"; {m}" for m in problems)
     return Result(FAIL if problems else PASS, note, {"exit": p.rc, **r, "problems": problems, "log": p.log})
 
 
@@ -608,6 +624,7 @@ CHECKS = (
     Check("I1", "interface: layout and wire count", i1_interface, EMIT_JOBS),
     Check("I2.model", "exactness: classical dialog model and iteration bound", i2_model, ("model",)),
     Check("I2.step", "exactness: the Euclid step equals the base's on every small-width variant", i2_step, ("step",)),
+    Check("I2.k1", "exactness: the kernel's K1 cut is proven on every input and changes nothing else", i2_k1, ("k1",)),
     Check("I2.toy", "exactness: exhaustive gate-level check on toy curves and the emitted toy file", i2_toy, ("toy", "emit:toy127")),
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
