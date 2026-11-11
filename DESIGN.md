@@ -608,3 +608,12 @@ This leaves one CCX per bit in the back pass, followed by two layers of reversal
 Four clean copies of J supply the gates and swaps, and the reverse copy tree clears them before the original allocator order is restored.
 The three extra copies raise toy127's point add from 47 to 49 wires; secp256k1 stays at 1,246 wires.
 At G the circuit is 1,246 wires × 17,515,282 ticks, with 3,472,890 CCX and T 24,310,230: 2,346,606 fewer ticks for 194,564 more CCX, 12.06 ticks a CCX, and qubit-time 21,824,041,372, 11.81% below the previous commit.
+
+## A cap on the tick's prefix blocks
+
+This is our change, first built as `210a80e` on our fork, and this branch takes its three edits to `qec/two_bit.py` verbatim.
+`Prefix` takes an optional block-length cap and keeps its AND-top and increment contracts for every block partition.
+Only the tick's high-word P uses cap 37; every other `Prefix` caller keeps the uncapped doubling blocks.
+At the tick's 221-bit high word the blocks go from 3, 7, 15, 31, 63 and 100 to 3, 7, 15, 31, 37, 37, 37, 37 and 15, with three more top wires and no change in CCX or T.
+The cap fires only on words longer than its blocks, so the exhaustive toy rows do not reach it; `I2.prefix` (`scripts/prefix_check.py`) checks `Prefix`'s contract at the tick's lengths and at caps from none to 13, and its control, a capped block that takes the first block's top, must fail.
+At G the circuit is 1,249 wires × 17,016,612 ticks, with 3,472,890 CCX and T 24,310,230: 498,670 fewer ticks for 3 more wires, and qubit-time 21,253,748,388, 2.61% below the previous commit and 14.12% below PR #11's.

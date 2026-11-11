@@ -49,7 +49,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "pass_instances": 2,
             "karatsuba_rows": 44, "karatsuba_tail_pairs": 25_882_122, "karatsuba_every_y_lanes": 1_179_562,
             "karatsuba_piece_lanes": 60, "karatsuba_controls": 12,
-            "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 183}
+            "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 183,
+            "prefix_cases": 160, "prefix_lanes": 84_000}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -189,6 +190,7 @@ class Run:
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
             "karatsuba": [["karatsuba_check.py", "--out", w / "karatsuba_check.json"], ["karatsuba_mutation.py"]],
+            "prefix": [["prefix_check.py", "--out", w / "prefix_check.json"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
@@ -424,6 +426,27 @@ def i2_mutation(run):
     return Result(FAIL if problems or caught < need else PASS, note, evidence)
 
 
+def i2_prefix(run):
+    p, = run.procs("prefix")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"prefix_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"prefix_check.py printed no summary, see {p.log}")
+    else:
+        problems += summary["problems"]
+        if "cases" in summary["check"]:
+            problems += coverage("cases", summary["check"]["cases"], "prefix_cases")
+            problems += coverage("lanes", summary["check"]["lanes"], "prefix_lanes")
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    ctl = ", ".join(f"{c} fails {r['failures']:,}" for c, r in summary["controls"].items())
+    return Result(PASS, f"Prefix at the tick's lengths and caps, {summary['check']['cases']} cases on "
+                        f"{summary['check']['lanes']:,} lanes, with and without release/restore, 0 failures; "
+                        f"control {ctl}", evidence)
+
+
 def i2_karatsuba(run):
     check, mutation = run.procs("karatsuba")
     rows = json_lines(check.stdout)
@@ -636,6 +659,8 @@ CHECKS = (
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
     Check("I2.karatsuba", "exactness: the Karatsuba square-subtract, forced at small primes and at full width", i2_karatsuba,
           ("karatsuba",)),
+    Check("I2.prefix", "exactness: Prefix with a block cap at the tick's lengths, with a broken capped block as control",
+          i2_prefix, ("prefix",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,
