@@ -46,7 +46,9 @@ REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
-            "pass_instances": 2}
+            "pass_instances": 2,
+            "search_definitions": 267, "search_standalone_before": 259_582, "search_standalone_after": 247_245,
+            "search_toy_instances": 22, "search_toy_lanes": 9_812}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -186,12 +188,14 @@ class Run:
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
+            "search-toy": [["cp_toy_check.py", "--out", w / "cp_toy_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
             **{f"emit:{name}": [["emit.py", *args, "--out", w / "emit" / filename]] for name, (filename, args) in EMITS.items()},
             "addends": [],
         }
         if not quick:
+            self.specs["search"] = [["cp_cert.py", "--secp", "--work", w / "search", "--out", w / "cp_cert.json"]]
             self.specs["secp-flat"] = [["check.py", "--secp", "--secp-random", SECP_RANDOM_POINTS[False], "--seed", 2026, "--out", w / "secp256k1_sampled.json"]]
         self.jobs = {}
         self.pool = None
@@ -452,6 +456,69 @@ def i2_pass(run):
     return Result(FAIL if problems else PASS, note, {"exit": p.rc, "instances": inst, "uploads": uploads, "problems": problems, "log": p.log})
 
 
+def _last_summary(run, group, script):
+    p, = run.procs(group)
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"{script} exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"{script} printed no summary, see {p.log}")
+    return p, summary, problems
+
+
+def _row(p, summary, problems, note):
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    return Result(FAIL, "; ".join(problems), evidence) if problems else Result(PASS, note(summary), evidence)
+
+
+def i2_search(run):
+    p, s, problems = _last_summary(run, "search", "cp_cert.py")
+    if s is not None:
+        problems += [f"certificate refused: {', '.join(s['failures'][:5])}"] * (not s["certified"])
+        problems += coverage("changed definitions", s["changed_definitions"], "search_definitions")
+        problems += coverage("standalone ticks before the search", s["search"]["standalone"][0], "search_standalone_before")
+        problems += coverage("standalone ticks after the search", s["search"]["standalone"][1], "search_standalone_after")
+        if s["emitted_sha256"] != run.emitted("secp256k1_G.hier").summary["sha256"]:
+            problems.append("the certified circuit is not the emitted upload")
+    return _row(p, s, problems, lambda s: (
+        f"G after qec/gate_pass.py and scripts/cp_search.py: {s['changed_definitions']} definitions reordered, each "
+        f"keeping every wire's role runs; standalone forward + inverse ticks {s['search']['standalone'][0]:,} -> "
+        f"{s['search']['standalone'][1]:,}"))
+
+
+def i2_search_control(run):
+    p, s, problems = _last_summary(run, "search", "cp_cert.py")
+    if s is not None:
+        problems += coverage("controls tried", s["control_tried"], "search_definitions")
+        problems += [f"{s['control_tried'] - s['control_refused']} swapped bodies certified"] * (
+            s["control_refused"] != s["control_tried"])
+    return _row(p, s, problems, lambda s: (
+        f"one adjacent non-commuting swap in each of the {s['control_tried']} reordered definitions: all refused"))
+
+
+def i2_search_toy(run):
+    p, s, problems = _last_summary(run, "search-toy", "cp_toy_check.py")
+    if s is not None:
+        problems += coverage("instances", s["instances"], "search_toy_instances")
+        problems += coverage("lanes", s["lanes"], "search_toy_lanes")
+        problems += ["a form failed on some lane"] * (not s["all_exact"])
+        problems += [f"the search changed {s['instances_changed']} instances"] * (s["instances_changed"] != s["instances"])
+    return _row(p, s, problems, lambda s: (
+        f"{s['instances']} toy instances, {s['lanes']:,} lanes, exact as emitted, after qec/gate_pass.py and searched; "
+        f"the search changed every instance"))
+
+
+def i2_search_toy_control(run):
+    p, s, problems = _last_summary(run, "search-toy", "cp_toy_check.py")
+    if s is not None:
+        problems += coverage("controls run", s["controls_run"], "search_toy_instances")
+        problems += [f"{s['controls_run'] - s['controls_caught']} controls not caught"] * (
+            s["controls_caught"] != s["controls_run"])
+    return _row(p, s, problems, lambda s: (
+        f"one adjacent non-commuting swap in a searched definition: caught in {s['controls_caught']} of "
+        f"{s['controls_run']} instances"))
+
+
 def i2_secp_flat(run):
     proc, row = run.secp_flat()
     lanes = 2 * (COVERAGE["secp_special_points"] + SECP_RANDOM_POINTS[False])
@@ -598,6 +665,14 @@ CHECKS = (
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,
           ("pass", "emit:toy127.hier", "emit:secp256k1_G.hier")),
+    Check("I2.search", "exactness: the critical-hop search only reorders commuting gates in each definition", i2_search,
+          ("search", "emit:secp256k1_G.hier"), full_only=True),
+    Check("I2.search-control", "exactness: the search certificate refuses a non-commuting swap", i2_search_control,
+          ("search",), full_only=True),
+    Check("I2.search-toy", "exactness: toy point adds as emitted, post-passed and searched", i2_search_toy,
+          ("search-toy",)),
+    Check("I2.search-toy-control", "exactness: the toy search check catches a non-commuting swap",
+          i2_search_toy_control, ("search-toy",)),
     Check("I3", "gate set: X, CX, CCX, SWAP only", i3_gate_set, ("toy", "secp-hier", "secp-flat") + EMIT_JOBS),
     Check("I5", "addend independence of definitions", i5_addend_independence, EMIT_JOBS),
     Check("I6", "cost at G and sample statistics over addends (report)", i6_cost, ("secp-hier", "secp-flat") + EMIT_JOBS),

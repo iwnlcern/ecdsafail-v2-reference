@@ -31,6 +31,15 @@ ECDSAFAIL_V2=../ecdsafail-v2 scripts/run_all.sh   # also builds and runs the har
 
 Without `ECDSAFAIL_V2`, `run_all.sh` skips the harness steps and says so, and the harness receipts keep their committed contents.
 
+The form the board scores is the hierarchical upload after two post-passes:
+
+```sh
+python3.12 -I -B scripts/emit.py --hier --out G.hier.json      # the circuit at A = G, with the depth pass
+python3 -I wrap.py G.hier.json raw.method.json                 # the board guide's wrapper, not in this repository
+python3 -I qec/gate_pass.py raw.method.json post.method.json   # pair cancels and CCX control order
+python3 -I scripts/cp_search.py post.method.json method.json   # the critical-hop search, DESIGN.md's last section
+```
+
 Individual steps:
 
 ```sh
@@ -62,9 +71,9 @@ Python is stdlib only. The harness is a Rust crate whose dependencies are path r
 All numbers are measured unless marked as estimates.
 
 **This branch.**
-At G the circuit is 1,246 wires, 3,981,919 CCX, 27,873,433 T and 13,951,547 ops, as `scripts/accept.py` reports it, with 14 pass, 0 fail and 1 pending (`I7.charge`).
-Wires × T is 34,730,297,518, which is 70.22% below the reference's 2,311 × 50,465,933.
-The hierarchical JSON for G is 39,480,742 bytes, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
+At G the emitted circuit is 1,555 wires, 7,171,225 CCX, 50,198,575 T and 17,828,876 ops, as `scripts/accept.py` reports it, with 18 pass, 0 fail and 1 pending (`I7.charge`).
+After `qec/gate_pass.py` and `scripts/cp_search.py`, the form the board scores, it is 1,555 wires × 2,334,421 ticks, 7,162,267 CCX and 50,135,869 T: qubit-time 3,630,024,655, which is 97.79% below the reference's 164,135,627,418, and T is 330,064 below the reference's 50,465,933.
+The hierarchical JSON for G is 75,202,126 bytes as emitted and 73,573,976 as scored, under the 100 MiB upload cap; the flat circuit is still over the 10,000,000 operation cap.
 Two named limits apply.
 `I2.model`'s zero-caller row is narrowed from the reference's gate.
 The standalone multiplier is restricted to x in [1, q), and nonzero x at its entries rests on the kernel's flag code and the non-full build refusal.

@@ -789,3 +789,23 @@ The sections from "Blocks of 3 in the add's forward sweep" to "P's blocks after 
 Together, the full circuit has 1,250 wires, 7,114,217 CCX (T 49,799,519) and 5,387,028 ticks.
 After `qec/gate_pass.py` it has 5,349,345 ticks: qubit-time 6,686,681,250, against 7,334,902,500 for the combined head above and 7,909,085,166 for PR8.
 The two branches touch different functions, and their tick savings add up exactly.
+
+## Critical-hop search after the post-pass
+
+This branch is abdowns's `qt/base` at `2b9bdc8`, the source of their gate-order entry, with one step added after `qec/gate_pass.py`.
+On the board's schedule two gates that hold the same wire in the same role, both reading it as a control or both only XOR-ing into it, take turns on it although they commute, and the one emitted first goes first; for two CCX that is 8 to 10 ticks.
+abdowns's entry removed such waits by hand: they walked the critical path of one Bezout tick and of one Euclid step, hop by hop, marked every hop where the next gate waited only for its turn on a control, and reordered the routines behind those hops.
+`scripts/cp_search.py` automates that walk, on the scored method, for every definition without calls.
+It times each body standalone, forward and inverse, under the board's tick model with every wire ready at 0, and walks the critical path of each run.
+At every hop where a gate's start was set by the gate before it on a wire both read or both only XOR into, it tries four moves in order: the waiting gate just before the other, the other just after it, and either CCX with its controls exchanged.
+A move needs the moved gate to commute with every gate it passes, and it is kept only if the body's forward plus inverse ticks fall; the walk then restarts on the new path, and the search stops when no hop's move helps, or after 20,000 evaluations, which no definition here reaches.
+It keeps every gate, so CCX, T and the expanded ops charge do not move, and it reads only the body it changes and has no randomness.
+It is critical-path list scheduling (Adam, Chandy and Dickson, CACM 17(12), 1974) run as a local search over the orders of commuting gates, as commutation-based gate reordering does in quantum circuit compilers (Itoko et al., Integration 70, 2020, arXiv:1907.02686).
+It leaves out the square-subtract's definition, 501,276 ops, because each evaluation re-times the whole body; the other 267 definitions without calls are searched, and all 267 change.
+At G, after `qec/gate_pass.py`, which is 2elliot's, those 267 bodies go from 259,582 standalone forward plus inverse ticks to 247,245, and the circuit from 1,555 wires × 2,404,728 ticks to 1,555 × 2,334,421: qubit-time 3,630,024,655, 2.92% below abdowns's entry's 3,739,352,040, at the same 7,162,267 CCX, T 50,135,869 and expanded ops charge 18,436,850.
+The circuit gains more than the standalone sums, because each Bezout tick feeds the next.
+2elliot's entry lists running the depth pass again after the post-pass as a dead end, and this is a different pass.
+The depth pass list-schedules each definition from its dependencies, and its own tie-break makes the waits the search removes, so running it again on this method gives 2,404,664 ticks, 64 fewer, or 2,405,027 with the top level's CCX controls put back in the emitter's order.
+The search starts from the finished order and keeps a move only when it shortens the definition's own forward and inverse runs.
+`scripts/cp_cert.py`, which shares no code with the search, certifies the searched circuit against the post-passed one: on every wire of every changed definition the same sequence of role runs, each holding the same gates with CCX controls sorted, and nothing else changed (`I2.search`); and it refuses a swapped non-commuting pair in each of the 267 (`I2.search-control`).
+`scripts/cp_toy_check.py` runs 22 toy point adds on every lane as emitted, after `qec/gate_pass.py` and searched (`I2.search-toy`), and a swapped non-commuting pair in a searched definition is caught in all 22 (`I2.search-toy-control`).

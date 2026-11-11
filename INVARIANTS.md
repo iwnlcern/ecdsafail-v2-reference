@@ -128,7 +128,17 @@ Any claim for this build must name both limits and the build refusal.
   Equal run sequences mean the same permutation, because ops that share only read-only or XOR-target wires commute.
   The check must also reject a body with its first adjacent non-commuting pair swapped, and the certified JSON must be the emitted upload byte for byte.
 
-Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, and 2 x (6 + random R) lanes per simulated addend. A receipt that covers less fails, even with zero failures.
+- `I2.search` runs only in full mode. It runs `scripts/cp_cert.py --secp`, which writes the 256-bit circuit at A = G with `scripts/emit.py --hier`, runs `qec/gate_pass.py` and then `scripts/cp_search.py` on it, each as its own process, and certifies the searched circuit against the post-passed one.
+  Everything outside the definitions' bodies must be identical, a definition with a call must be identical, and every definition without calls must keep, on every wire, the same sequence of role runs, each holding the same gates with CCX controls sorted.
+  `scripts/cp_cert.py` shares no code with `scripts/cp_search.py`.
+  The row requires 267 reordered definitions, standalone forward plus inverse ticks of 259,582 before the search and 247,245 after, and the certified circuit to be the emitted upload byte for byte.
+- `I2.search-control` swaps the first adjacent pair of gates that do not commute in each of those 267 definitions, and requires the certificate to refuse every one.
+- `I2.search-toy` runs `scripts/cp_toy_check.py`: on 22 toy instances, two addends on each curve of q = 13, 43, 61, 67, 79, 163, 211, 349, 397, 547 and 577, it checks the hierarchical emission, its `qec/gate_pass.py` output and that output searched as `scripts/cp_search.py` searches it, each on every lane (c, R), 9,812 lanes. The search must change every instance.
+- `I2.search-toy-control` swaps one adjacent non-commuting pair of gates in a searched definition, up to 64 tries an instance, and requires the lanes to catch it in all 22.
+- I5 is not extended to the searched form. The search reads only the body of the definition it changes and has no randomness, so definitions that are identical after `qec/gate_pass.py` are identical after the search.
+  I5 itself compares the emitted definitions, before `qec/gate_pass.py`.
+
+Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, 2 x (6 + random R) lanes per simulated addend, 267 searched definitions at G, and 22 toy instances and 9,812 lanes for the search. A receipt that covers less fails, even with zero failures.
 
 **I3 gate set.** Every emitted primitive is X, CX, CCX or SWAP, with no measurement and no reset. The profile disables measurement cleanup, and a circuit of these four gates is a permutation with no phases. That is why basis-state exactness with clean scratch gives the exact unitary on superpositions. A single Z, CZ or measurement breaks that argument even when every basis check passes. I3 reads the emitted JSON at toy and 256-bit sizes and the JSON of every built addend, and counts the gate kinds in every toy instance and every expanded 256-bit upload.
 
