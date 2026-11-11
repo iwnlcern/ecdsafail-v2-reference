@@ -809,3 +809,11 @@ The depth pass list-schedules each definition from its dependencies, and its own
 The search starts from the finished order and keeps a move only when it shortens the definition's own forward and inverse runs.
 `scripts/cp_cert.py`, which shares no code with the search, certifies the searched circuit against the post-passed one: on every wire of every changed definition the same sequence of role runs, each holding the same gates with CCX controls sorted, and nothing else changed (`I2.search`); and it refuses a swapped non-commuting pair in each of the 267 (`I2.search-control`).
 `scripts/cp_toy_check.py` runs 22 toy point adds on every lane as emitted, after `qec/gate_pass.py` and searched (`I2.search-toy`), and a swapped non-commuting pair in a searched definition is caught in all 22 (`I2.search-toy-control`).
+
+## More copies of J for the tick's add, and of p for its un-copy
+
+`WIDE_ADD_COPIES`, the copies of J the tick's add writes its sums under, and `P_FAN`, the copies of p that un-copy it from the word after the add, are abdowns's code; this branch sets them to 20 and 48, against their entry's 16 and 8, values our sweep of the two settings chose.
+Both settings change only how many wires carry a copy and which copy a gate reads, so the CCX and T do not move; the expanded ops charge goes from 18,436,850 to 18,501,034.
+At G after `qec/gate_pass.py` the circuit goes from 1,555 × 2,404,728 to 1,555 × 2,393,643 ticks, 11,085 fewer.
+With the critical-hop search on top, the 267 searched bodies go from 259,401 standalone forward plus inverse ticks to 247,052, and the circuit is 1,555 × 2,323,117: qubit-time 3,612,446,935, 11,304 ticks under the search alone and 3.39% below abdowns's entry, at 7,162,267 CCX and T 50,135,869.
+The wide add runs at every n above 3 and the fan at every n, so the toy rows reach both settings; an un-copy that skips the fan's first word bit fails 18 of the 36 toy instances.

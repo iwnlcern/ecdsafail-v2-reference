@@ -47,7 +47,7 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "components": 52, "component_lanes": 13_867,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
             "pass_instances": 2,
-            "search_definitions": 267, "search_standalone_before": 259_582, "search_standalone_after": 247_245,
+            "search_definitions": 267, "search_standalone_before": 259_401, "search_standalone_after": 247_052,
             "search_toy_instances": 22, "search_toy_lanes": 9_812}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}

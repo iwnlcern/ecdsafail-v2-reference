@@ -194,7 +194,7 @@ HIGH_CARRIERS = True
 LATE_FINAL_WIRES = True
 LATE_MIN_COPIES = 6
 # Copies of p for un-copying it from the word after the add (1 = none).
-P_FAN = 8
+P_FAN = 48
 # Run the tick's add as 2elliot depth/v2's CDKM ripple instead of either add above: 579,096
 # fewer CCX on the whole circuit for 1,535,700 more ticks (measured after the post-pass).
 CDKM_ADD = False
@@ -209,7 +209,7 @@ WIDE_CMP = (2, 3, 4, 5)
 WIDE_ADD = 7
 # The add's blocks ramp from 1 up to WIDE_ADD at both ends, each size this many times.
 WIDE_ADD_RAMP = 2
-WIDE_ADD_COPIES = 16
+WIDE_ADD_COPIES = 20
 # The add's backward sweep in its own blocks, (top, ramp) as above (None = the forward sweep's).
 # Its chain costs 11 ticks a block against the forward chain's 7, so its blocks are larger.
 WIDE_ADD_BACK = (10, 1)
