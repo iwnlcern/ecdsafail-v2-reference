@@ -50,7 +50,7 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "karatsuba_rows": 44, "karatsuba_tail_pairs": 25_882_122, "karatsuba_every_y_lanes": 1_179_562,
             "karatsuba_piece_lanes": 60, "karatsuba_controls": 12,
             "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 183,
-            "prefix_cases": 160, "prefix_lanes": 84_000,
+            "prefix_cases": 320, "prefix_lanes": 168_000,
             "u6_rows": 161, "u6_toy_instances": 36, "u6_reach": 32}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}

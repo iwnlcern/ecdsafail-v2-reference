@@ -628,3 +628,10 @@ On the step domain U is odd, g0 equals the low bit of V, and g1 and the ring sta
 Rings too small for a layout keep the step's own unwind.
 `I2.u6` (`scripts/u6_check.py`) runs `shared_difference_u6` against the tree's unwind on every input of that domain at widths 2 to 8 and ring sizes 7 to 25, 33, 49, 97 and 193, counts the toy instances that reach it, 32 of 36, and requires each of two controls, the swap branch's carries or its output dropped, to fail the toy row on exactly those 32.
 At G the circuit is 1,249 wires × 12,517,442 ticks, with 4,734,106 CCX and T 33,138,742: 4,499,170 fewer ticks for 1,261,216 more CCX, 3.57 ticks a CCX, and qubit-time 15,634,285,058, 26.44% below the previous commit and 36.83% below PR #11's.
+
+## The complemented clear on the tick's P at cap 31
+
+The construction is credited to PR #17, its first public build. Our design of 2026-11-08 was unpublished, and this code is ours; no priority claim is made.
+The tick's P alone enables `nor=True`; every other prefix keeps its per-block clear. The complemented new bits rebuild the carry prefix and clear the saved carries before the borrowed scratch is restored. P uses cap 31; the comparison and Euclid unwind keep the preceding commit's maps.
+The square-subtract stays at 1,240 wires and 124,362 CCX. The prefix row exercises both flag settings, release and restore, with a broken cap and an early read as controls.
+At G this gives 1,260 wires × 11,908,847 ticks = 15,005,147,220, with 5,071,146 CCX and T 35,498,022.
