@@ -122,7 +122,7 @@ Any claim for this build must name both limits and the build refusal.
 - `I2.probe` runs `scripts/probe_check.py`.
   The Bézout tick's probe (its first chain) computes e = AND(H) * the carry out of L plus the selected constant, by a carry-out tree that borrows H's wires with an X.
   The row builds the probe's context as the tick does at the 7 secp-shaped primes 2^n - (2^k + d), n = 12 to 18, that have the merged path, a quiet run of at least 2 bits and at least 2 H bits, with P's and M's tops from the tick's idle allocator and the H wire that comes free first borrowed, and simulates every lane: every window and H value and every selector value, 4,161,536 lanes a variant.
-  The tree and the ripple chain it replaced must both give e on every lane, leave every other wire as it began, and have every borrowed wire read 1 wherever AND(H) = 1, the only lanes on which e can be 1.
+  The tree and the ripple chain it replaced must both give e on every lane, leave every other wire as it began, and have every wire `take()` borrows read 0 right after its X wherever AND(H) = 1, the only lanes on which e can be 1.
   Two controls must fail there: borrowing without the X, and the tree's P merge dropping one side.
   The merge control, installed in the whole point add, must also fail `scripts/check.py`'s exhaustive toy check, so the toy rows reach the tree.
 - `I2.post-pass` runs `scripts/post_pass_check.py`.

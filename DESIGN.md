@@ -861,7 +861,7 @@ This changes no circuit: at G the emission, the post-passed method and the figur
 
 `KaratsubaMulsub` in `qec/square.py`, the one-level Karatsuba square-subtract, is our construction, from our `lean` entry (pull request #11).
 That is the split Y = L + beta H with beta = 2^h, h = n/2 and beta^2 = 2^n = f mod q, and its two groups: AC builds A = L^2 and C = (L + H)^2 and folds beta G + A' with G = C' - A', and B builds B = H^2 and folds 2^h B0 + f ~P with P = B' - B1.
-It also takes in each group's fold to a canonical residue through `finish` and `canon`, and the bounded `_multiple`, which the class carries as its own method, since this branch's `SquareFold._multiple` has another signature and no bounds.
+It also takes each group's fold to a canonical residue, by `finish` and `canon`, and the bounded `_multiple`, which the class carries as its own method, since this branch's `SquareFold._multiple` has another signature and no bounds.
 Building, applying and unbuilding half squares into X with beta^2 = f mod q follows [arXiv:2609.09582, section 5.3.4](https://arxiv.org/abs/2609.09582), and the Karatsuba modular square is [arXiv:2609.05625, section VII.2](https://arxiv.org/abs/2609.05625); the uncontrolled rows follow section VII.A of the latter, after Litinski.
 Each group is a recorded block whose retained wires form an explicit junk register; one controlled modadd subtracts the group's residue from X or adds it, and the block's inverse then restores Y and clears the junk.
 The half-square offsets and the complement's -f (2^n - 1) collect into one constant K, which joins `_kernel`'s constant add of 3a under gen, as in that entry.
