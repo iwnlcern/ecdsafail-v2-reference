@@ -130,6 +130,10 @@ Any claim for this build must name both limits and the build refusal.
   The mutation control demotes 200 seeded CCX of the class's circuit at q = 65,521 to CX and judges each mutant on the tail pairs and the every-Y lanes.
   It catches 183. Each of the 17 survivors lies in group B's build or unbuild, and its controls are never (1, 0) on any Y in that group's block, so the mutant equals the circuit on every input at that prime.
   The row fails on any wrong or dirty lane, on a control that does not fail, below 183 caught, on a survivor not shown equivalent, or if the classifier calls a caught mutant equivalent.
+- `I2.u6` runs `scripts/u6_check.py`.
+  It runs `shared_difference_u6` against the tree's unwind without a ring, `DialogMultiplier._shared_difference`, on the step's domain (U odd, g0 = V[0], g1 = 0, ring clean): every other U and V bit, at widths 2 to 8 and ring sizes 7 to 25, 33, 49, 97 and 193, 161 pairs, and requires every wire, the ring and the carry wire included, to be equal.
+  It counts the toy row's instances that call `shared_difference_u6`, 32 of 36, at widths 6 to 10 and rings of 7 to 14 wires.
+  Its two controls drop one line of `shared_difference_u6` each, the swap branch's carries (A_(i-1) ^= g1 B_i) and its output (U ^= g1); both read g1, which the exhaustive domain holds at 0, so each runs the toy row on a copy and must fail on exactly the 32 instances that reach U6.
 - `I2.prefix` runs `scripts/prefix_check.py`.
   The tick builds P with `Prefix(C, H, cap=37)`, and the cap only takes effect when the doubling would build a block longer than it, so at small moduli it never fires and the exhaustive toy rows do not reach it.
   The row builds `Prefix` standalone at lengths 221, 190, 163, 100, 64, 37, 5 and 2 and at caps none, 63, 48, 37, 30, 26, 23, 20, 16 and 13, with and without release/restore around a read of top, 160 cases on 84,000 lanes.

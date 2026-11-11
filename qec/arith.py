@@ -59,6 +59,97 @@ def add(C, a, b, cout=None, ctrl=None, cin=None):
         C.free([cin])
 
 
+def lookahead_sizes(w):
+    """Block sizes for a w-bit lookahead chain, from the bottom: 1, 1, 2, 2, ... up to 8, and the
+    same from the top down, so the blocks at both ends are short. A long block's precompute holds
+    up the chain at the bottom, and its fixes and clears hold up the end of the sweep at the top."""
+    bottom, top, left, b, d = [], [], w, 0, 0
+    while left > 0:
+        nb, nt = min(8, 1 + b // 2), min(8, 1 + d // 2)
+        if nb <= nt:
+            r = min(nb, left)
+            bottom.append(r)
+            b += 1
+        else:
+            r = min(nt, left)
+            top.append(r)
+            d += 1
+        left -= r
+    return bottom + top[::-1]
+
+
+def lookahead_chain(C, U, V, temps, sizes):
+    """f_j = x_j ^ p_j f_(j-1) in place on U for j = 1 .. len(U) - 1, from the chain input U[0],
+    with U[j] holding x_j and V[j] holding p_j (a carry chain in CDKM's up-sweep form).
+    For a block of r bits after U[i], first X_(i+j) = x_(i+j) ^ p_(i+j) X_(i+j-1) goes onto U[i+j]
+    and the products T_j = p_(i+1) ... p_(i+j) onto temps, with no carry; then one CCX in series,
+    U[i+r] ^= T_r U[i]; then U[i+j] ^= T_j U[i] for j < r, each temp cleared after its last use.
+    One CCX a block is in series instead of one a bit. Temps are taken in turn and left clean; a
+    block never needs more than len(temps) of them at once."""
+    n = len(U)
+    q = 0
+    i = 0
+    blk = 0
+    while i < n - 1:
+        r = min(sizes[min(blk, len(sizes) - 1)], len(temps) + 1, n - 1 - i)
+        blk += 1
+        if r == 1:
+            C.ccx(U[i], V[i + 1], U[i + 1])
+            i += 1
+            continue
+        for j in range(2, r + 1):
+            C.ccx(U[i + j - 1], V[i + j], U[i + j])
+        T = {1: V[i + 1]}
+        for j in range(2, r + 1):
+            T[j] = temps[q % len(temps)]
+            q += 1
+            C.ccx(T[j - 1], V[i + j], T[j])
+        C.ccx(U[i], T[r], U[i + r])
+        for j in range(r, 1, -1):
+            C.ccx(T[j - 1], V[i + j], T[j])
+            C.ccx(U[i], T[j - 1], U[i + j - 1])
+        i += r
+
+
+class _Gates:
+    """Records cx and ccx calls, so a sweep can be emitted forward and then in reverse."""
+
+    def __init__(self):
+        self.ops = []
+
+    def cx(self, a, b):
+        self.ops.append((a, b))
+
+    def ccx(self, a, b, c):
+        self.ops.append((a, b, c))
+
+
+def _emit(C, ops):
+    for o in ops:
+        (C.cx if len(o) == 2 else C.ccx)(*o)
+
+
+def adjacent_xor(C, a):
+    """a[i] ^= a[i + 1] for i < len(a) - 1, from the old values, in about 2 log2 len(a) CX layers:
+    the inverse of an in-place suffix XOR done as a Brent-Kung prefix network (Brent and Kung,
+    1982), so that network's CXs in reverse order. The ripple it replaces is len(a) - 1 CXs in
+    series, since each shares a wire with the next."""
+    n = len(a)
+    ops = []
+    d = 1
+    while d < n:
+        for p in range(2 * d - 1, n, 2 * d):
+            ops.append((p - d, p))
+        d *= 2
+    while d > 1:
+        d //= 2
+        for p in range(3 * d - 1, n, 2 * d):
+            ops.append((p - d, p))
+    # prefix position p is suffix index n - 1 - p: a[n - 1 - p] ^= a[n - 1 - p + d]
+    for s, t in reversed(ops):
+        C.cx(a[n - 1 - s], a[n - 1 - t])
+
+
 def sub(C, a, b, borrow=None, ctrl=None):
     """b -= ctrl*a mod 2^w. borrow ^= ctrl*[a > b]."""
     for w in b:

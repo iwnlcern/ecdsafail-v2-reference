@@ -50,7 +50,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "karatsuba_rows": 44, "karatsuba_tail_pairs": 25_882_122, "karatsuba_every_y_lanes": 1_179_562,
             "karatsuba_piece_lanes": 60, "karatsuba_controls": 12,
             "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 183,
-            "prefix_cases": 160, "prefix_lanes": 84_000}
+            "prefix_cases": 160, "prefix_lanes": 84_000,
+            "u6_rows": 161, "u6_toy_instances": 36, "u6_reach": 32}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -191,6 +192,7 @@ class Run:
             "mutation": [["mutation_control.py"]],
             "karatsuba": [["karatsuba_check.py", "--out", w / "karatsuba_check.json"], ["karatsuba_mutation.py"]],
             "prefix": [["prefix_check.py", "--out", w / "prefix_check.json"]],
+            "u6": [["u6_check.py", "--out", w / "u6_check.json"]],
             "pass": [["pass_check.py", "--out", w / "pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
@@ -426,6 +428,27 @@ def i2_mutation(run):
     return Result(FAIL if problems or caught < need else PASS, note, evidence)
 
 
+def i2_u6(run):
+    p, = run.procs("u6")
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"u6_check.py exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"u6_check.py printed no summary, see {p.log}")
+    else:
+        problems += summary["problems"]
+        problems += coverage("exhaustive rows", summary["exhaustive rows"], "u6_rows")
+        problems += coverage("toy instances", summary["toy instances"], "u6_toy_instances")
+        problems += coverage("instances reaching U6", summary["reach U6"], "u6_reach")
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    ctl = ", ".join(f"{c} fails {r['failing']} instances" for c, r in summary["controls"].items())
+    return Result(PASS, f"shared_difference_u6 equals the unwind on every input of the step domain at widths 2 to "
+                        f"{summary['width']}, {summary['exhaustive rows']} width and ring pairs; {summary['reach U6']} of "
+                        f"{summary['toy instances']} toy instances reach it; controls {ctl}, exactly those", evidence)
+
+
 def i2_prefix(run):
     p, = run.procs("prefix")
     rows = json_lines(p.stdout)
@@ -659,6 +682,8 @@ CHECKS = (
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
     Check("I2.karatsuba", "exactness: the Karatsuba square-subtract, forced at small primes and at full width", i2_karatsuba,
           ("karatsuba",)),
+    Check("I2.u6", "exactness: the Euclid unwind run backwards on its domain, with the toy reach and two dropped lines as controls",
+          i2_u6, ("u6",)),
     Check("I2.prefix", "exactness: Prefix with a block cap at the tick's lengths, with a broken capped block as control",
           i2_prefix, ("prefix",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),

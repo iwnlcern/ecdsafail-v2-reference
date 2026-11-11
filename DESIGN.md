@@ -617,3 +617,14 @@ Only the tick's high-word P uses cap 37; every other `Prefix` caller keeps the u
 At the tick's 221-bit high word the blocks go from 3, 7, 15, 31, 63 and 100 to 3, 7, 15, 31, 37, 37, 37, 37 and 15, with three more top wires and no change in CCX or T.
 The cap fires only on words longer than its blocks, so the exhaustive toy rows do not reach it; `I2.prefix` (`scripts/prefix_check.py`) checks `Prefix`'s contract at the tick's lengths and at caps from none to 13, and its control, a capped block that takes the first block's top, must fail.
 At G the circuit is 1,249 wires × 17,016,612 ticks, with 3,472,890 CCX and T 24,310,230: 498,670 fewer ticks for 3 more wires, and qubit-time 21,253,748,388, 2.61% below the previous commit and 14.12% below PR #11's.
+
+## The Euclid unwind as the up-sweep run backwards
+
+This is our change, built with tree sweeps as `d9ecbbe` on our fork.
+This branch takes `d9ecbbe`'s `shared_difference_u6`, `_fan`, `_unfan` and `ring_layout_u6`, and the five helpers they call in `qec/arith.py` (`_Gates`, `_emit`, `adjacent_xor`, `lookahead_chain` and `lookahead_sizes`), verbatim, with one line changed: the carry sweep is `lookahead_chain` on the ring with `lookahead_sizes(w)`, the form before the tree sweeps, which takes fewer CCX for more ticks.
+The shared difference uses a ring of at most `U6_RING = 193` clean tape wires for its carry sweep and repeated controls.
+The adjacent XOR network exposes the same inputs as the serial ripple with logarithmic depth, and the middle selection and reversed sweep produce the original unwind map and restore the ring before reuse.
+On the step domain U is odd, g0 equals the low bit of V, and g1 and the ring start clean.
+Rings too small for a layout keep the step's own unwind.
+`I2.u6` (`scripts/u6_check.py`) runs `shared_difference_u6` against the tree's unwind on every input of that domain at widths 2 to 8 and ring sizes 7 to 25, 33, 49, 97 and 193, counts the toy instances that reach it, 32 of 36, and requires each of two controls, the swap branch's carries or its output dropped, to fail the toy row on exactly those 32.
+At G the circuit is 1,249 wires × 12,517,442 ticks, with 4,734,106 CCX and T 33,138,742: 4,499,170 fewer ticks for 1,261,216 more CCX, 3.57 ticks a CCX, and qubit-time 15,634,285,058, 26.44% below the previous commit and 36.83% below PR #11's.

@@ -1,7 +1,7 @@
 """Exact, complete, controlled fixed-addend point addition:
 |c>|R>|0> -> |c>|R + c*A>|0> for every R in E(F_q) encoded as little-endian
 affine (x, y) with infinity = (0, 0)."""
-from .arith import Mod, _maj, add_const, cswap, load_const
+from .arith import Mod, _Gates, _emit, _maj, add_const, adjacent_xor, cswap, load_const, lookahead_chain, lookahead_sizes
 from .builder import Circuit
 from .curve import Curve
 from .square import KaratsubaMulsub, SquareFold
@@ -55,6 +55,87 @@ def _par_rotate(C, two, V, cp):
     for p in range((L - 1) // 2):
         cswap(C, ctl[p % len(ctl)], [V[p]], [V[L - 2 - p]])
     _unfanout(C, two, cp)
+
+
+U6_RING = 193
+
+
+def ring_layout_u6(n):
+    """Copies of g0 and of g1, n // 2 each, and lookahead temps, all n, on the same ring wires at
+    different times. None below 7."""
+    if n < 7:
+        return None
+    return n // 2, n
+
+
+def _fan(C, src, copies):
+    """CX src into each clean copy by doubling: depth about log2(len(copies) + 1)."""
+    have = [src]
+    todo = list(copies)
+    while todo:
+        new = []
+        for s in have:
+            if not todo:
+                break
+            d = todo.pop(0)
+            C.cx(s, d)
+            new.append(d)
+        have += new
+
+
+def _unfan(C, src, copies):
+    g = _Gates()
+    _fan(g, src, copies)
+    _emit(C, reversed(g.ops))
+
+
+def shared_difference_u6(C, U, V, g0, g1, ring):
+    """The step's shared difference with its down-sweep as the up-sweep run backwards.
+    On the step's domain (U odd, so a_0 = 1; g0 = V[0]; g1 = 0), with b' = ~b and s = a + b'
+    mod 2^w, the tree's unwind leaves (a, b) if g0 = 0, (a, ~s) if g0 and not g1, and (~b', s)
+    if g1 = g0 c_w, except V[0] = ~s_0 whatever g1 is. The carries of a + ~s and of b' + ~s equal
+    those of a + b', so after the up-sweep the up-sweep states of (a, ~s) and (b', ~s) are a CX or
+    two a bit away (B_i = ~(p_i ^ k_i); A_(i-1) = k_i ^ p_i and B_i = ~k_i), and the same sweep run
+    backwards leaves them. No carry copies and no uncopy chain. The whole ring is the sweeps'
+    temps, which they leave clean; copies of g0 and g1 sit on it only for the middle step and
+    for the select."""
+    w = len(U)
+    lay = ring_layout_u6(len(ring))
+    assert w >= 2 and lay is not None
+    r, _ = lay
+    G0, G1 = list(ring[:r]), list(ring[r:2 * r])
+    (cin,) = C.alloc(1)
+    for wire in V:
+        C.x(wire)
+    up = _Gates()
+    for i in range(w):
+        up.cx(U[i], V[i])
+    up.cx(U[0], cin)
+    adjacent_xor(up, U)
+    lookahead_chain(up, [cin] + list(U), [None] + list(V), list(ring), lookahead_sizes(w))
+    _emit(C, up.ops)
+    _fan(C, g0, G0)
+    C.ccx(g0, U[-1], g1)
+    _fan(C, g1, G1)
+    for i in range(w):
+        k = cin if i == 0 else U[i - 1]
+        C.ccx(G1[i % r], V[i], k)
+        C.ccx(G0[i % r], k, V[i])
+        C.cx(G0[i % r], V[i])
+    _unfan(C, g1, G1)
+    _unfan(C, g0, G0)
+    _emit(C, reversed(up.ops))
+    _fan(C, g0, G0)
+    _fan(C, g1, G1)
+    for i in range(w):
+        C.cx(G1[i % r], U[i])
+        C.x(V[i])
+        C.cx(G0[i % r], V[i])
+        if i:
+            C.cx(G1[i % r], V[i])
+    _unfan(C, g1, G1)
+    _unfan(C, g0, G0)
+    C.free([cin])
 
 
 class DialogMultiplier:
@@ -169,7 +250,10 @@ class DialogMultiplier:
         self.C.apply(self._encoder(j, swept),
                      [self._block_wires(G, j, swept)], inverse=True)
 
-    def _shared_difference(self, U, V, g0, g1):
+    def _shared_difference(self, U, V, g0, g1, ring_wires=()):
+        if ring_layout_u6(len(ring_wires[:U6_RING])) is not None:
+            shared_difference_u6(self.C, U, V, g0, g1, list(ring_wires[:U6_RING]))
+            return
         """Compare and form the even difference using one majority chain."""
         C = self.C
         (cin,) = C.alloc(1)
@@ -225,7 +309,7 @@ class DialogMultiplier:
                 offset = E[0]
                 C.cx(offset, V[0])
                 C.cx(V[0], g0)
-                self._shared_difference(U[:w], V[:w], g0, b)
+                self._shared_difference(U[:w], V[:w], g0, b, list(cp))
                 V[:] = V[1:] + V[:1]
                 # A subtract keeps its swap on E and moves the old offset to the cell.
                 cswap(C, g0, [offset], [b])
@@ -318,7 +402,7 @@ class DialogMultiplier:
                 top_clear = i >= 1 and w >= 3 and self.widths[i - 1] == w
                 # Alternate clean scratch so adjacent carry and strip sweeps can overlap.
                 hold = self.C.alloc(1) if i % 2 else []
-                k = min(max(0, (w - 1) // 2 - 1), len(available))
+                k = min(max(U6_RING, (w - 1) // 2 - 1), len(available))
                 self.C.apply(self._euclid_step(w, top_clear, k), [U[:w], V, E, cell, available[:k]])
                 self.C.free(hold)
             G.extend(cell)
