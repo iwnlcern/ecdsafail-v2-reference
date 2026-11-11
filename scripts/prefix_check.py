@@ -5,15 +5,16 @@
 The cap only takes effect when the doubling would build a block longer than it, so at small moduli it never fires
 and the exhaustive small-q rows do not reach it. This builds Prefix(bits, cap) standalone at lengths 221, 190, 163,
 100, 64, 37, 5 and 2 and at caps none, 63, 48, 37, 30, 26, 23, 20, 16 and 13, with and without release/restore
-around a read of top (as M uses it), and checks bit-sliced over lanes:
+around a read of top (as M uses it), and, when Prefix takes `nor`, with the write's per-block clear (nor off) and
+its complemented-prefix clear (nor on), and checks bit-sliced over lanes:
   after construction  top = AND(bits) (the bits hold chain values under X until write, by design);
   after write(t)      bits = bits + t mod 2^h, t unchanged, every other wire 0.
 Lanes: all ones, all ones with one 0 at each position, all ones below each block start and 0 at it, 0, and 64
 random words, each with t = 0 and t = 1.
 Controls, each of which must fail:
   cap    a capped block takes its top from the first block's top instead of the last's;
-  early  `write`'s NOR clears read the complemented prefix straight after building it, before P's higher blocks
-         unwind (a copy of this tree's `qec` with that one region of `Prefix.write` replaced).
+  early  `write`'s complemented-prefix clears read that prefix straight after building it, before P's higher
+         blocks unwind (a copy of this tree's `qec` with that one region of `Prefix.write` replaced).
 The last line printed is a JSON summary.
 """
 import argparse
@@ -34,11 +35,12 @@ EARLY = ("        # Each block's carry a*t is still on its top, and a*t = t*AND(
 
 def worker(control, tree):
     sys.path.insert(0, str(tree))
+    import inspect
     import qec.two_bit as tb
     from qec.builder import CCX, CX, SWAP, X, Circuit
     assert tb.__file__.startswith(str(tree) + os.sep)
+    nors = (False, True) if "nor" in inspect.signature(tb.Prefix.__init__).parameters else (None,)
     if control == "cap":
-        import inspect
         src = inspect.getsource(tb.Prefix.__init__)
         assert src.count("C.ccx(tops[-1], v, p)") == 1
         ns = {}
@@ -62,7 +64,7 @@ def worker(control, tree):
             else:
                 raise ValueError(op)
 
-    def check(h, cap, release):
+    def check(h, cap, release, nor):
         words = [(1 << h) - 1, 0]
         words += [((1 << h) - 1) ^ (1 << i) for i in range(h)]
         words += [(1 << i) - 1 for i in range(h + 1)]
@@ -73,7 +75,8 @@ def worker(control, tree):
         C = Circuit()
         bits = C.alloc(h)
         (t,) = C.alloc(1)
-        P = tb.Prefix(C, bits, cap) if cap else tb.Prefix(C, bits)
+        kw = {} if nor is None else {"nor": nor}
+        P = tb.Prefix(C, bits, cap, **kw) if cap else tb.Prefix(C, bits, **kw)
         if release:
             P.release()
         built = len(C.prims)
@@ -107,11 +110,12 @@ def worker(control, tree):
     for h in (221, 190, 163, 100, 64, 37, 5, 2):
         for cap in (None, 63, 48, 37, 30, 26, 23, 20, 16, 13):
             for release in (False, True):
-                bad, n = check(h, cap, release)
-                total += bad
-                cases += 1
-                lanes += n
-    print(json.dumps({"control": control, "cases": cases, "lanes": lanes, "failures": total}))
+                for nor in nors:
+                    bad, n = check(h, cap, release, nor)
+                    total += bad
+                    cases += 1
+                    lanes += n
+    print(json.dumps({"control": control, "nor": list(nors), "cases": cases, "lanes": lanes, "failures": total}))
 
 
 def spawn(control, tree=ROOT):

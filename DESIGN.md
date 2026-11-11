@@ -650,5 +650,14 @@ PR #17 (abdowns) built this clear first in public, in its write.
 We designed the same clear on 2026-11-08 and did not publish it, so the construction is credited to PR #17, and this code is ours.
 With the clears, P's cap moves from 23 to 26, the best cap we measured on this head.
 `I2.prefix` now has a second control, `write`'s clears read straight after the complemented prefix is built, before P's higher blocks unwind, and it must fail.
-Every `Prefix.write` takes the clear, so the square-subtract's write in `KaratsubaMulsub.fold_b` does too: at secp256k1 the square-subtract alone is now 1,246 wires and 128,630 CCX, against 1,240 and 124,362, and `scripts/karatsuba_check.py` pins the new pair.
+The next section keeps the clear on the tick's P alone, so the square-subtract's write in `KaratsubaMulsub.fold_b` keeps its per-block clear, and at secp256k1 the square-subtract alone stays at 1,240 wires and 124,362 CCX, as `scripts/karatsuba_check.py` pins.
 At G the circuit is 1,262 wires × 9,674,607 ticks, with 5,698,938 CCX and T 39,892,566: 627,493 fewer ticks for 370,416 more CCX and 10 more wires, and qubit-time 12,209,354,034, 5.34% below the previous commit and 50.67% below PR #11's.
+
+## The complemented clear on the tick's P only
+
+`Prefix` takes `nor`, off by default.
+With it off, `write` clears each block's carry as it goes, as before the section above; with it on, `write` clears the carries from the complemented prefix.
+Only the tick's P sets it.
+The clear does not pay in the other writes on this tree: in the tick's M it costs 163,680 ticks and 29,108 CCX, and in the square-subtract's write in `KaratsubaMulsub.fold_b` 6,539 ticks and 4,268 CCX.
+`I2.prefix` runs every case with `nor` off and on, 320 cases on 168,000 lanes, and keeps both controls.
+At G the circuit is 1,262 wires × 9,504,388 ticks, with 5,665,562 CCX and T 39,658,934: against the clear in every write, the same wires, 170,219 fewer ticks, 33,376 fewer CCX and 233,632 less T, and qubit-time 11,994,537,656, 1.76% below the previous commit and 51.53% below PR #11's.

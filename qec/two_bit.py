@@ -66,8 +66,8 @@ class Prefix:
     Nothing may read bits between this and write, and write runs top down.
     """
 
-    def __init__(self, C, bits, cap=None):
-        self.C, self.bits, self.cap = C, bits, cap
+    def __init__(self, C, bits, cap=None, nor=False):
+        self.C, self.bits, self.cap, self.nor = C, bits, cap, nor
         self.blocks = []
         self.released = None
         h = len(bits)
@@ -145,6 +145,9 @@ class Prefix:
             C.cx(p, x[0])
             for w in reversed(u):
                 C.x(w)
+            if not self.nor:
+                C.ccx(t, a, p)
+                C.free([p])
         C.x(bits[0])
         C.ccx(t, bits[0], bits[1])
         C.x(bits[0])
@@ -152,7 +155,7 @@ class Prefix:
         C.cx(t, bits[1])
         C.cx(t, bits[0])
         C.free([self.first])
-        if not self.blocks:
+        if not self.blocks or not self.nor:
             return
         # Each block's carry a*t is still on its top, and a*t = t*AND(~new bits below the block). Build a prefix of
         # the complemented bits and clear each carry from it as that prefix unwinds top down: a block's top is read
@@ -485,7 +488,7 @@ class TwoBitMod(Mod):
             cswap(C, one, [k1], [nxt])
             C.x(one)
         ra, rb = self.run
-        P, M = Prefix(C, H, cap=26), Prefix(C, L[ra:rb])
+        P, M = Prefix(C, H, cap=26, nor=True), Prefix(C, L[ra:rb])
         # p is released only here, so the Prefix scratch above takes no wire the add uses at its bottom bit.
         self._drop_after_b1(C, prev, p)
         # Only M's skip reads M before its write, so the top below its last is cleared until then.
