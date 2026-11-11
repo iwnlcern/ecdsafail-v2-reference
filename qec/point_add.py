@@ -434,6 +434,16 @@ class DialogMultiplier:
         n = self.mod.n
         V, available, G = pool[:n], pool[n:], []
         junk = list(junk)
+        # Carries spread evenly: the least level L with sum(min(carries, L)) >= len(junk) caps each step's kept
+        # carries; junk left once every carry is kept goes to the steps' flags, in step order.
+        caps = [0] * self.iters
+        for j in range(1, self.iters - 1):
+            wj = self.widths[j]
+            caps[j] = self.step_carries(wj, wj >= 3 and self.widths[j - 1] == wj, self.widths[j + 1] == wj - 1)
+        level = 0
+        while level < max(caps) and sum(min(c, level) for c in caps) < len(junk):
+            level += 1
+        flags = max(0, len(junk) - sum(min(c, level) for c in caps))
         lend = U[n - self.u_lent:]
         E = self.C.alloc(1)
         f1 = (1 << n) - self.mod.q + 1
@@ -453,8 +463,9 @@ class DialogMultiplier:
                 narrow = not last and self.widths[i + 1] == w - 1
                 # The steps take junk wires in order: a step's carries first, then its flag.
                 plain = last or i == 0
-                kept = 0 if plain else min(len(junk), self.step_carries(w, top_clear, narrow))
-                keep_two = not plain and len(junk) > kept
+                kept = 0 if plain else min(len(junk), caps[i], level)
+                keep_two = not plain and flags > 0 and len(junk) > kept
+                flags -= keep_two
                 J, junk = junk[:kept + keep_two], junk[kept + keep_two:]
                 # Alternate clean scratch so adjacent carry and strip sweeps can overlap.
                 hold = self.C.alloc(1) if i % 2 else []

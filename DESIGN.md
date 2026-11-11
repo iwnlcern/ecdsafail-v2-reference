@@ -621,3 +621,14 @@ Fan sw directly onto a star of scratch wires untouched since the compare began, 
 Reverse the fan afterward and restore the free stack.
 This removes the serial tail formed when tree nodes both forwarded the control and controlled their own swap runs.
 At G this step retains 4,096 wires and 3,192,795 CCX, with 19,564,397 scheduled ticks and 12,550,691 expanded operations.
+
+### Junk spread evenly over the Euclid steps
+
+The junk order is abdowns's setting from this branch's base, tuned here; the junk count is unchanged.
+`_euclid_pass` handed its junk wires to the steps in order, each step's carries and then its flag.
+It now spreads the carries evenly: the least level L with the sum over steps of min(carries, L) at least the junk count caps each step's kept carries, still handed out in step order.
+Only once every carry is kept do the steps take their flags, again in step order, so a budget that reaches every carry still fits the pass's capacity.
+At secp256k1 the level is 8: 348 of the 384 steps keep 8 carries each, 2,784 in all, and no flag is kept.
+Each junk wire still saves one CCX wherever it goes, so CCX does not move.
+Ticks do; our reading, not measured, is that a kept bit takes its restore off the step's serial unwind, and with kept bits at the bottom of every step, each step's low bits are done sooner for the next step's chain.
+At G this step retains 4,096 wires and 3,192,795 CCX, with 19,240,125 scheduled ticks and 12,550,851 expanded operations.
