@@ -130,8 +130,12 @@ Any claim for this build must name both limits and the build refusal.
   The mutation control demotes 200 seeded CCX of the class's circuit at q = 65,521 to CX and judges each mutant on the tail pairs and the every-Y lanes.
   It catches 183. Each of the 17 survivors lies in group B's build or unbuild, and its controls are never (1, 0) on any Y in that group's block, so the mutant equals the circuit on every input at that prime.
   The row fails on any wrong or dirty lane, on a control that does not fail, below 183 caught, on a survivor not shown equivalent, or if the classifier calls a caught mutant equivalent.
+- `I2.compare` runs `scripts/compare_check.py`.
+  The tick compares a[1:] with low[1:] by carry-select blocks on its borrowed clean scratch, in place of one `gt_into` call, so the row builds three copies of `qec`: this tree, a reference with that `gt_into` call restored in place of the compare block, and a control with the forward combine's first gate dropped.
+  For q = 7, 31 and 127 it builds `DialogMultiplier._body` and runs it on every (x, y) with x in [1, q) and y in [0, q), 16,974 lanes: the tree must equal the reference on x and y on every lane, leave every other wire at 0, and restore its inputs when reversed, and the control must differ.
+  It also runs `scripts/component_check.py --bezout`, the Bézout tick's 62 exhaustive and boundary rows, which must pass on the tree and fail on the control.
 - `I2.prefix` runs `scripts/prefix_check.py`.
-  The tick builds P with `Prefix(C, H, cap=37)`, and the cap only takes effect when the doubling would build a block longer than it, so at small moduli it never fires and the exhaustive toy rows do not reach it.
+  The tick builds P with `Prefix(C, H, cap=23)`, and the cap only takes effect when the doubling would build a block longer than it, so at small moduli it never fires and the exhaustive toy rows do not reach it.
   The row builds `Prefix` standalone at lengths 221, 190, 163, 100, 64, 37, 5 and 2 and at caps none, 63, 48, 37, 30, 26, 23, 20, 16 and 13, with and without release/restore around a read of top, 160 cases on 84,000 lanes.
   On all ones, all ones with one 0 at each position, all ones below each block start and 0 at it, 0, and 64 random words, each with t = 0 and t = 1, it requires top = AND(bits) after construction, and bits + t mod 2^h, t unchanged and every other wire 0 after `write(t)`.
   Its control takes a capped block's top from the first block's top instead of the last's, and must fail.

@@ -617,3 +617,16 @@ Only the tick's high-word P uses cap 37; every other `Prefix` caller keeps the u
 At the tick's 221-bit high word the blocks go from 3, 7, 15, 31, 63 and 100 to 3, 7, 15, 31, 37, 37, 37, 37 and 15, with three more top wires and no change in CCX or T.
 The cap fires only on words longer than its blocks, so the exhaustive toy rows do not reach it; `I2.prefix` (`scripts/prefix_check.py`) checks `Prefix`'s contract at the tick's lengths and at caps from none to 13, and its control, a capped block that takes the first block's top, must fail.
 At G the circuit is 1,249 wires × 17,016,612 ticks, with 3,472,890 CCX and T 24,310,230: 498,670 fewer ticks for 3 more wires, and qubit-time 21,253,748,388, 2.61% below the previous commit and 14.12% below PR #11's.
+
+## Carry-select blocks in the tick's compare
+
+This is our change, built as `9222c25`, with its carry-pair cancellation `95850fd` and its weighted block bounds `dfe8ebb`, all on our fork; this branch takes the compare block from `dfe8ebb` verbatim, in place of the tick's `gt_into(C, a[1:], low[1:], k1, ctrl=z)`.
+The tick's coefficient comparison runs in at most seven blocks, borrowing two clean touched scratch wires for each block past the first.
+Each block computes its carries for an input carry of zero and of one; their XOR is the propagation, so combining the copied zero-carry result with the incoming carry gives the full comparison carry.
+A block chain equals its CX gates followed by its CCX ladder, and the CX gates only write the carry-in and commute with its X, so only the ladder is undone and redone at the two carry transitions.
+Block zero runs its chain once each way while the later blocks also undo and redo their ladders around two carry flips, so the block bounds weight block zero by 400 and block j by 200 + 9(2j − the block count).
+Reversing the combine and the blocks restores the inputs, clears the borrowed scratch and restores the allocator stack exactly.
+It is none of PR #8's "Compare blocks with fresh wires", PR #12's "Compare blocks 10 or 12" or PR #18's "Larger blocks in the compare": it runs 7 blocks on the tick's own borrowed clean scratch, with no fresh wire and a serial combine.
+With the faster compare, P's cap moves from 37 to 23, the best cap we measured on this head: the 221-bit high word takes 12 blocks, 3, 7, 15, eight of 23 and 10, with three more top wires than at 37, and the compare takes no fresh wire.
+`I2.compare` (`scripts/compare_check.py`) runs M at q = 7, 31 and 127 on every input with the compare and with `gt_into` restored in its place, requires the two to agree on every lane with clean scratch and an exact inverse, and runs the Bézout tick's component rows; its control drops the forward combine's first gate and must fail both.
+At G the circuit is 1,252 wires × 14,801,270 ticks, with 4,067,306 CCX and T 28,471,142, giving qubit-time 18,531,190,040. The Euclid unwind is unchanged from the previous commit.
