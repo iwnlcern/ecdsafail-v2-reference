@@ -803,7 +803,7 @@ It keeps every gate, so CCX, T and the expanded ops charge do not move, and it r
 It is critical-path list scheduling (Adam, Chandy and Dickson, CACM 17(12), 1974) run as a local search over the orders of commuting gates, as commutation-based gate reordering does in quantum circuit compilers (Itoko et al., Integration 70, 2020, arXiv:1907.02686).
 It leaves out the square-subtract's definition, 501,276 ops, because each evaluation re-times the whole body; the other 267 definitions without calls are searched, and all 267 change.
 At G, after `qec/gate_pass.py`, which is 2elliot's, those 267 bodies go from 259,582 standalone forward plus inverse ticks to 247,245, and the circuit from 1,555 wires × 2,404,728 ticks to 1,555 × 2,334,421: qubit-time 3,630,024,655, 2.92% below abdowns's entry's 3,739,352,040, at the same 7,162,267 CCX, T 50,135,869 and expanded ops charge 18,436,850.
-The circuit gains more than the standalone sums, because each Bezout tick feeds the next.
+The circuit gains more than the standalone sums because most definitions run many times: weighted by their forward and inverse runs, the 267 standalone gains add to 80,627 ticks, and the circuit's path falls by 70,307.
 2elliot's entry lists running the depth pass again after the post-pass as a dead end, and this is a different pass.
 The depth pass list-schedules each definition from its dependencies, and its own tie-break makes the waits the search removes, so running it again on this method gives 2,404,664 ticks, 64 fewer, or 2,405,027 with the top level's CCX controls put back in the emitter's order.
 The search starts from the finished order and keeps a move only when it shortens the definition's own forward and inverse runs.
