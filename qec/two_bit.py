@@ -372,15 +372,34 @@ class TwoBitMod(Mod):
             C.free([p])
 
     def _add_or_shift(self, C, J, a, word):
-        """On J, word = 2*word. Off J, word += a >> 1, through word's top two bits."""
+        """Off J add a >> 1; on J rotate word's low n+1 bits left."""
         n = self.n
         (cin, D, carry, t) = C.alloc(4)
+        extra = C.alloc(3)
+        copies = [D] + extra
+        sources, tree = [J], []
+        filled = 0
+        while filled < len(copies):
+            layer = []
+            for source in sources:
+                if filled == len(copies):
+                    break
+                target = copies[filled]
+                filled += 1
+                C.cx(source, target)
+                tree.append((source, target))
+                layer.append(target)
+            sources.extend(layer)
+        C.x(J)
         ops, tgt = a[1:], word[:n - 1]
         carries = [cin] + ops[:-1]
         for i in range(n - 1):
-            _maj(C, carries[i], tgt[i], ops[i])
-            C.cx(carries[i], D)
-        C.x(J)
+            c, u = carries[i], tgt[i]
+            _maj(C, c, u, ops[i])
+            # x*(u ^ not-J ^ not-J*x) = x*u, so the ordinary undo still works.
+            C.cx(J, u)
+            C.cx(c, u)
+            C.ccx(copies[i % len(copies)], c, u)
         C.ccx(J, ops[-1], carry)
         C.ccx(carry, word[n - 1], t)
         C.ccx(t, word[n], word[n + 1])
@@ -390,23 +409,21 @@ class TwoBitMod(Mod):
         C.ccx(carry, word[n - 1], t)
         C.x(word[n - 1])
         C.ccx(J, ops[-1], carry)
-        # The pair below hands word[n - 1] the rolling XOR, which has no pair above to cancel it.
-        C.ccx(J, D, word[n - 1])
-        C.x(J)
-        cswap(C, J, [word[n - 1]], [word[n]])
         for i in reversed(range(n - 1)):
-            c, u, v, o = carries[i], word[i], word[i + 1], ops[i]
+            c, u, o = carries[i], word[i], ops[i]
             C.ccx(c, u, o)
-            C.cx(o, u)
-            # u and v both take D, or on J their own XOR. Then c still holds x_i, for D.
-            C.cx(v, u)
-            C.cx(D, v)
-            C.cx(u, D)
-            C.ccx(J, D, v)
-            C.cx(u, D)
-            C.cx(v, u)
-            C.cx(c, D)
             C.cx(o, c)
+            C.cx(J, u)
+            C.cx(o, u)
+            # Emit each reversal pair only after both bits are final.
+            if i < (n + 1) // 2:
+                cswap(C, copies[i % len(copies)], [word[i]], [word[n - i]])
+            if i < n // 2:
+                cswap(C, copies[(i + 1) % len(copies)], [word[i + 1]], [word[n - i]])
+        C.x(J)
+        for source, target in reversed(tree):
+            C.cx(source, target)
+        C.free(extra)
         C.free([cin, D, carry, t])
 
     def tick(self, C, prev, g, nxt, a, s, pebble=False):

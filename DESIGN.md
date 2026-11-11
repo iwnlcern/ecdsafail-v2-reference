@@ -598,3 +598,13 @@ After the emitter's depth pass it takes 925,846 against 1,505,063, because the p
 `I2.karatsuba` checks the class at forced small primes and its canonical tail at full width; see INVARIANTS.md.
 At G this step retains 1,246 wires, with 3,279,860 CCX, T 22,959,020 and 19,879,611 scheduled ticks.
 With K folded into the kernel's constant add, the head retains 1,246 wires, with 3,278,326 CCX, T 22,948,282 and 19,861,888 scheduled ticks.
+
+## Split coefficient add
+
+This is our change, first built as `ae5ce1c` on our fork, and this branch takes `_add_or_shift` from that commit verbatim.
+The tick's coefficient add-or-shift separates the add on not-J from the rotation on J.
+The forward gate modifies a sum bit while its carry wire is idle; x·x = x makes the added term cancel in the ordinary carry undo.
+This leaves one CCX per bit in the back pass, followed by two layers of reversal swaps as soon as their bits are final.
+Four clean copies of J supply the gates and swaps, and the reverse copy tree clears them before the original allocator order is restored.
+The three extra copies raise toy127's point add from 47 to 49 wires; secp256k1 stays at 1,246 wires.
+At G the circuit is 1,246 wires × 17,515,282 ticks, with 3,472,890 CCX and T 24,310,230: 2,346,606 fewer ticks for 194,564 more CCX, 12.06 ticks a CCX, and qubit-time 21,824,041,372, 11.81% below the previous commit.
