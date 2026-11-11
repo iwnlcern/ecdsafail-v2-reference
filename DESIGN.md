@@ -856,3 +856,27 @@ Commit 3's 14 temps change the toy and forced circuits' adds and so reorder each
 Lowering the floor to 15 would let the next reordering lower it again, so the search was widened instead: `scripts/post_pass_check.py` now tries up to 64 candidates a circuit, and the floor stays 16.
 At 64 tries the control catches on all 22, the latest at its 48th try (forced16), with 337 tries that left the function unchanged, and all 40 circuits stay exact before and after the pass; its rows take 1,619 s in all, against 952 s at 20 tries.
 This changes no circuit: at G the emission, the post-passed method and the figures are those of the section above.
+
+## The Karatsuba square-subtract on the tree adders
+
+`KaratsubaMulsub` in `qec/square.py`, the one-level Karatsuba square-subtract, is our construction, from our `lean` entry (pull request #11).
+That is the split Y = L + beta H with beta = 2^h, h = n/2 and beta^2 = 2^n = f mod q, and its two groups: AC builds A = L^2 and C = (L + H)^2 and folds beta G + A' with G = C' - A', and B builds B = H^2 and folds 2^h B0 + f ~P with P = B' - B1.
+It also takes in each group's fold to a canonical residue through `finish` and `canon`, and the bounded `_multiple`, which the class carries as its own method, since this branch's `SquareFold._multiple` has another signature and no bounds.
+Building, applying and unbuilding half squares into X with beta^2 = f mod q follows [arXiv:2609.09582, section 5.3.4](https://arxiv.org/abs/2609.09582), and the Karatsuba modular square is [arXiv:2609.05625, section VII.2](https://arxiv.org/abs/2609.05625); the uncontrolled rows follow section VII.A of the latter, after Litinski.
+Each group is a recorded block whose retained wires form an explicit junk register; one controlled modadd subtracts the group's residue from X or adds it, and the block's inverse then restores Y and clears the junk.
+The half-square offsets and the complement's -f (2^n - 1) collect into one constant K, which joins `_kernel`'s constant add of 3a under gen, as in that entry.
+
+On this branch the class's adds run on 2elliot's adders, each with the same carry in and carry out as the add it replaces.
+B's half square takes `SquareFold._rows`, and each AC half runs the same loop, `fan_into`, `add_lookahead`'s tree and `prefix_xor`, on its own 110 temps and its own carry in, so the two halves still share no wire.
+The folds' f-multiples add by `add_lookahead` trees on 59 temps in AC and 123 in B, and each group's modadd is 2elliot's tree modadd, B's at the square's own shape and AC's at 44 temps and 7 copies, which `SquareFold.modadd` now takes as an optional shape.
+`add_low`, `finish`, `canon` and the last add of B's half keep the ripple.
+Five constants in `qec/square.py`, `KARATSUBA_ROW_TREE`, `KARATSUBA_AC_MODADD`, `KARATSUBA_B_MODADD`, `KARATSUBA_HALF_TEMPS` and `KARATSUBA_FOLD_TEMPS`, set these choices, and `I2.karatsuba` pins them.
+Taken as it was, the class peaks at 1,315 wires here, because the AC group's junk stays live through the tree modadd's scratch; at 44 temps and 7 copies the AC modadd brings the circuit back to 1,256, and the AC build, the AC modadd and the B build each then peak at 1,256.
+The point add takes the class at even n >= 128 with h + bitlen(f) + 3 < n, so at secp256k1, and keeps `SquareFold` below that.
+At secp256k1 the class alone, with K paid, takes 1,253 wires and 431,620 CCX.
+
+No toy row reaches the class, so it is checked at forced small primes: `I2.karatsuba` (`scripts/karatsuba_check.py` and `scripts/karatsuba_mutation.py`) runs every Y and every X at each canonical tail at q = 65,521, 262,121 and 262,139, its pieces at full width, twelve controls and 200 mutants, and `I2.karatsuba-post-pass` (`scripts/karatsuba_post_pass_check.py`) checks the class as built, as `qec/emit.py` writes it and after `qec/gate_pass.py` at those primes and at both full widths, with a wrong cancel that must be caught.
+At 256 bits the class is reached only by those checks' seeded samples and by the sampled 256-bit rows.
+The exactness claim is for the class's code on those inputs; the adders it now calls and the post-pass are 2elliot's.
+At G the raw emission has 7,082,064 CCX and T 49,574,448, and the pass cancels 23,370 pairs, against 22,341 before; in the class alone at secp256k1 it cancels 3,389.
+At G, after `qec/gate_pass.py`, the circuit is 1,256 wires × 5,112,574 ticks, 7,080,538 CCX and T 49,563,766: 128,663 fewer CCX for 57,118 more ticks at the same wires, and qubit-time 6,421,392,944, 1.13% above the previous commit and 3.97% below 2elliot's entry, with T 1.79% under the reference's 50,465,933.

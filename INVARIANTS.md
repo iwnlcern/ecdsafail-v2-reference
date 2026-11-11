@@ -144,6 +144,23 @@ Any claim for this build must name both limits and the build refusal.
   At J = 0 it runs every carry run, a carry generated at i, propagated through j and killed above, for every i < 255 and i <= j < 258, 33,405 lanes, then all-0 and all-1 words and R and 2^16 random lanes; at J = 1 the same words with random R: 197,890 lanes.
   It requires the specification on every lane, as built and after `qec/gate_pass.py`, in which the pass cancels no pair.
 - `I2.add256-control` drops the fix of the top bit of F's first block of 3, compiled from `qec/two_bit.py`'s text, and requires both forms to fail.
+- `I2.karatsuba` runs `scripts/karatsuba_check.py` and `scripts/karatsuba_mutation.py`.
+  `KaratsubaMulsub` applies only at even n >= 128, so every other exhaustive row and `I2.mutation` take `SquareFold`, and the class is otherwise reached only by sampled 256-bit points, on which its canonical tail almost never fires.
+  The check first requires the five `KARATSUBA_*` settings in `qec/square.py` to be the ones this branch sets.
+  It then forces the class at q = 65,521, 262,121 and 262,139.
+  At each, it checks every X with gen = 1 for each Y whose AC or B group value lies in [q, 2^n) at the entry of `canon`, 25,882,122 pairs, the whole population on which the tail's subtraction fires.
+  It also checks every Y with gen in {0, 1} at the same primes, 1,179,562 lanes.
+  It drives `canon` and `finish` at secp256k1 and 2^128 - 159 on values next to q and 2^n with every allowed carry pair, 60 lanes, and runs seeded samples at both widths with K paid by the class and with K merged into a preceding add; at secp256k1 the class alone must take 1,253 wires and 431,620 CCX.
+  It requires `ControlledPointAdd._mulsub` to take the class at both widths and to keep `SquareFold` at 2^64 - 59 and 65,519.
+  Twelve controls must fail: no canonical tail at each tail prime and in each full-width piece, no high carry, K off by one, and B's top part not folded.
+  The mutation control demotes 200 seeded CCX of the class's circuit at q = 65,521 to CX and judges each mutant on the tail pairs and the every-Y lanes.
+  It catches 186.
+  Each of the 14 survivors is shown equivalent: 11 lie in a group's build or unbuild, and their controls are never (1, 0) on any Y in that group's block; 3 lie in the closing add of K, and their controls are never (1, 0) on any (gen, X) there.
+  The row fails on any wrong or dirty lane, on a control that does not fail, below 186 caught, on a survivor not shown equivalent, or if the classifier calls a caught mutant equivalent.
+- `I2.karatsuba-post-pass` runs `scripts/karatsuba_post_pass_check.py`.
+  No toy row and no instance of `I2.post-pass` reaches the class, so this row builds it alone, hierarchically, at the same three primes and at 2^128 - 159 and secp256k1, and writes each with `qec/emit.py`'s depth pass.
+  It checks each in three forms, the flat build, the emitted JSON and that JSON after `qec/gate_pass.py`'s `main`, on the same lanes: at the primes the every-Y lanes and the tail pairs, and at the widths seeded samples, 27,065,356 lanes in all.
+  Its control removes one pair of the class's gates that the pass may not cancel and then runs the pass, up to 64 tries an instance; the check must catch one on all 5 instances.
 - `I2.secp` simulates the 256-bit hierarchical upload, expanded the same way as `I2.toy-hier`. Each addend runs on infinity, A, -A, -2A, 2A, 3A and random R, with c = 0 and c = 1. Quick mode runs G and one random addend with 8 random R. Full mode runs every built addend with 120 random R. It also requires that the JSON it simulated for G is the bytes `scripts/emit.py` writes.
 - `I2.secp-flat` runs only in full mode. It checks the flat 256-bit circuit at A = G on the same points with 120 random R, and requires all 252 lanes.
 
@@ -153,7 +170,7 @@ Any claim for this build must name both limits and the build refusal.
   Equal run sequences mean the same permutation, because ops that share only read-only or XOR-target wires commute.
   The check must also reject a body with its first adjacent non-commuting pair swapped, and the certified JSON must be the emitted upload byte for byte.
 
-Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, and 2 x (6 + random R) lanes per simulated addend. A receipt that covers less fails, even with zero failures.
+Each checker must reach the coverage pinned in `COVERAGE` at the top of `scripts/accept.py`: 13 model primes, 36 toy instances and 25,800 lanes, each listed instance exactly once, 49 components and 8,951 lanes, 200 mutation trials, 2 x (6 + random R) lanes per simulated addend, for `I2.karatsuba` 44 rows, 25,882,122 tail pairs, 1,179,562 every-Y lanes, 60 piece lanes, 12 controls and 200 mutation trials with at least 186 caught, and for `I2.karatsuba-post-pass` 5 instances and 27,065,356 lanes with the control caught on at least 5. A receipt that covers less fails, even with zero failures.
 
 **I3 gate set.** Every emitted primitive is X, CX, CCX or SWAP, with no measurement and no reset. The profile disables measurement cleanup, and a circuit of these four gates is a permutation with no phases. That is why basis-state exactness with clean scratch gives the exact unitary on superpositions. A single Z, CZ or measurement breaks that argument even when every basis check passes. I3 reads the emitted JSON at toy and 256-bit sizes and the JSON of every built addend, and counts the gate kinds in every toy instance and every expanded 256-bit upload.
 

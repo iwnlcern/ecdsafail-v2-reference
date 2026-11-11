@@ -51,7 +51,12 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800,
             "post_pass_instances": 40, "post_pass_lanes": 514_700, "post_pass_control_instances": 22,
             "post_pass_control_caught_at_least": 16,
             "ring_widths": 4, "ring_circuits": 54,
-            "add_reuse_layouts": 112, "add_reuse_control_layouts": 19, "add256_lanes": 197_890, "add256_carry_runs": 33_405}
+            "add_reuse_layouts": 112, "add_reuse_control_layouts": 19, "add256_lanes": 197_890, "add256_carry_runs": 33_405,
+            "karatsuba_rows": 44, "karatsuba_tail_pairs": 25_882_122, "karatsuba_every_y_lanes": 1_179_562,
+            "karatsuba_piece_lanes": 60, "karatsuba_controls": 12,
+            "karatsuba_mutation_trials": 200, "karatsuba_mutations_caught_at_least": 186,
+            "karatsuba_post_pass_instances": 5, "karatsuba_post_pass_lanes": 27_065_356,
+            "karatsuba_post_pass_control_caught_at_least": 5}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -199,6 +204,8 @@ class Run:
             "add-reuse-control": [["add_reuse_check.py", "--control", "--out", w / "add_reuse_check_control.json"]],
             "add256": [["add256_check.py", "--out", w / "add256_check.json"]],
             "add256-control": [["add256_check.py", "--control", "--out", w / "add256_check_control.json"]],
+            "karatsuba": [["karatsuba_check.py", "--out", w / "karatsuba_check.json"], ["karatsuba_mutation.py"]],
+            "karatsuba-post-pass": [["karatsuba_post_pass_check.py", "--out", w / "karatsuba_post_pass_check.json"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
                            "--seed", seed, "--out", w / f"secp256k1_hier_{i}.json"] for i, c in enumerate(chunks)],
             **{f"emit:{name}": [["emit.py", *args, "--out", w / "emit" / filename]] for name, (filename, args) in EMITS.items()},
@@ -599,6 +606,57 @@ def i2_add256_control(run):
     return _result(p, summary, problems, lambda s: "with one inner fix dropped in a block of 3, both forms fail")
 
 
+def i2_karatsuba(run):
+    check, mutation = run.procs("karatsuba")
+    rows = json_lines(check.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    found = json_lines(mutation.stdout)
+    mut = found[-1] if found else {}
+    need = COVERAGE["karatsuba_mutations_caught_at_least"]
+    problems = [f"karatsuba_check.py exited {check.rc}, see {check.log}"] * bool(check.rc)
+    problems += [f"karatsuba_mutation.py exited {mutation.rc}, see {mutation.log}"] * bool(mutation.rc)
+    if summary is None:
+        problems.append(f"karatsuba_check.py printed no summary, see {check.log}")
+    else:
+        problems += [f"failing rows: {summary['failed']}"] * bool(summary["failed"])
+        problems += coverage("rows", summary["rows"], "karatsuba_rows")
+        problems += coverage("tail pairs", sum(summary["tail_pairs"].values()), "karatsuba_tail_pairs")
+        problems += coverage("every-Y lanes", summary["every_y_lanes"], "karatsuba_every_y_lanes")
+        problems += coverage("piece lanes", summary["piece_lanes"], "karatsuba_piece_lanes")
+        problems += coverage("controls", summary["controls"], "karatsuba_controls")
+    if "trials" not in mut:
+        problems.append(f"karatsuba_mutation.py printed no result, see {mutation.log}")
+    else:
+        problems += coverage("mutation trials", mut["trials"], "karatsuba_mutation_trials")
+        problems += [f"{mut['caught']} of {mut['trials']} mutants caught, at least {need} required"] * (mut["caught"] < need)
+        problems += [f"{mut['unclassified']} survivors not shown equivalent"] * bool(mut["unclassified"])
+        problems += ["the survivor classifier called a caught mutant equivalent"] * (not mut["classifier_control"])
+    evidence = {"exits": [check.rc, mutation.rc], "summary": summary, "mutation": mut, "required": need,
+                "logs": [check.log, mutation.log], "problems": problems}
+    if problems:
+        return Result(FAIL, "; ".join(problems), evidence)
+    tail = ", ".join(f"{q}: {pairs:,}" for q, pairs in summary["tail_pairs"].items())
+    return Result(PASS, f"forced at small primes: every X for each Y reaching the canonical tail ({tail} pairs) and "
+                        f"{summary['every_y_lanes']:,} every-Y lanes; canon and finish on {summary['piece_lanes']} "
+                        f"full-width lanes; {summary['controls']} controls fail; {mut['caught']} of {mut['trials']} "
+                        f"mutants caught, at least {need} required, every survivor equivalent", evidence)
+
+
+def i2_karatsuba_post_pass(run):
+    p, summary, problems = _summary(run, "karatsuba-post-pass", "karatsuba_post_pass_check.py")
+    if summary is not None:
+        problems += ["a form failed on some lane"] * (not summary["built_raw_post_exact"])
+        problems += coverage("instances", summary["instances"], "karatsuba_post_pass_instances")
+        problems += coverage("lanes", summary["lanes"], "karatsuba_post_pass_lanes")
+        need = COVERAGE["karatsuba_post_pass_control_caught_at_least"]
+        problems += [f"the wrong cancel was caught on {summary['control_caught_rows']} instances, "
+                     f"fewer than {need}"] * (summary["control_caught_rows"] < need)
+    return _result(p, summary, problems, lambda s: f"the class alone at {s['instances']} forced primes and widths "
+                   f"({s['lanes']:,} lanes): exact as built, as emitted and after qec/gate_pass.py, which cancels "
+                   f"{s['pairs_cancelled']:,} pairs in it; one wrong cancel is caught on {s['control_caught_rows']} "
+                   f"of {s['instances']} instances")
+
+
 def i2_secp_flat(run):
     proc, row = run.secp_flat()
     lanes = 2 * (COVERAGE["secp_special_points"] + SECP_RANDOM_POINTS[False])
@@ -754,6 +812,10 @@ CHECKS = (
           i2_add256, ("add256",)),
     Check("I2.add256-control", "exactness: the 256-bit add check rejects a dropped inner fix", i2_add256_control,
           ("add256-control",)),
+    Check("I2.karatsuba", "exactness: the Karatsuba square-subtract forced at small primes, with controls and mutants",
+          i2_karatsuba, ("karatsuba",)),
+    Check("I2.karatsuba-post-pass", "exactness: the Karatsuba square-subtract after the post-pass, with a wrong cancel",
+          i2_karatsuba_post_pass, ("karatsuba-post-pass",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
     Check("I2.secp-flat", "exactness: 256-bit flat circuit at G", i2_secp_flat, ("secp-flat",), full_only=True),
     Check("I2.pass", "exactness: the depth pass only reorders commuting ops in each definition", i2_pass,

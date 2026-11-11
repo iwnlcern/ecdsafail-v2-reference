@@ -5,7 +5,7 @@ from .arith import (Mod, _Gates, _add_selected_tree, _doubling, _emit, _maj, add
                     fan_into, load_const, lookahead_sweep, tree_temps)
 from .builder import Circuit
 from .curve import Curve
-from .square import SquareFold
+from .square import KaratsubaMulsub, SquareFold
 from .two_bit import TwoBitMod
 from .model import tick_bound, tick_widths
 from . import block0_code, tail_code, tape_block
@@ -909,9 +909,16 @@ class ControlledPointAdd:
         assert len(set(enc)) == 4, "addend order must exceed 3"
         self._square_blk = None
 
+    def _square_offset(self):
+        """The constant _mulsub leaves for _kernel's preceding constant add: K on the Karatsuba path, else 0."""
+        return KaratsubaMulsub(self.mod).K if KaratsubaMulsub.applies(self.mod.q) else 0
+
     def _mulsub(self, gen, Yr, Xr):
-        """X = X - gen * Y^2 mod q, Y untouched."""
+        """X = X - gen * (Y^2 + _square_offset()) mod q, Y untouched."""
         C, mod, n = self.C, self.mod, self.n
+        if KaratsubaMulsub.applies(mod.q):
+            KaratsubaMulsub(mod).mulsub(C, gen, Yr, Xr, add_k=False)
+            return
         if SquareFold.applies(mod.q):
             self._square_mulsub(gen, Yr, Xr)
             return
@@ -976,7 +983,7 @@ class ControlledPointAdd:
         self.M.apply(Xr, Yr, inverse=True)
         (gen,) = C.alloc(1)
         recode(inverse=True)
-        mod.cmodadd_const(C, gen, 3 * a, Xr)
+        mod.cmodadd_const(C, gen, 3 * a + self._square_offset(), Xr)
         self._mulsub(gen, Yr, Xr)
         recode()
         C.free([gen])
