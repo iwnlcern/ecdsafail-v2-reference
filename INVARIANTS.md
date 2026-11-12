@@ -90,3 +90,8 @@ To enter a circuit on the board, follow the pull request format in your member g
 4. For any change to the iteration bound, the width schedule or a modular reduction, the argument that it stays exact on every input.
 
 Standalone M is checked only on x in [1,q), with exactly six x=0 component lanes excluded (57 to 51; total 8951 to 8945); nonzero kernel entries rely on its flag code. ab-godder’s PR #29 source at 61e0c50 fails those six excluded lanes in its unnarrowed component check. This narrowing does not establish the zero-input convention.
+
+
+The constant-tree filter adds I2.filter and I2.filter-small to the existing gate census.
+Their normal blocks must preserve every output and clean scratch, and the wrong-zero controls must be detected.
+LIVE_FILTER off must reproduce the preceding emitted bytes; the full gate retains I2.secp-flat and pending I7.charge.

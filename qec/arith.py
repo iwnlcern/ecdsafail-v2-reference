@@ -129,6 +129,42 @@ def _emit(C, ops):
         (C.cx if len(o) == 2 else C.ccx)(*o)
 
 
+# Drop the constant trees' gates whose control is an empty XOR sum (_live, scripts/filter_check.py); False
+# emits every gate.
+LIVE_FILTER = True
+
+
+def _live(ops, known):
+    """ops with every gate whose control is known to hold 0 dropped. known maps a wire to the wires whose start values
+    it XORs at the start, () meaning 0. Each wire's value is an XOR of symbols: a wire's start value, or the product of
+    two such sums, the same symbol for the same two sums. A CX adds its control's sum to its target's and a CCX the
+    product's symbol, so a wire whose sum is empty holds 0 on every input where known holds (scripts/filter_check.py)."""
+    val = {}
+    for w, src in known.items():
+        s = frozenset()
+        for x in src:
+            s ^= frozenset([('in', x)])
+        val[w] = s
+
+    def get(w):
+        if w not in val:
+            val[w] = frozenset([('in', w)])
+        return val[w]
+
+    out = []
+    for o in ops:
+        ctl = [get(w) for w in o[:-1]]
+        if not all(ctl):
+            continue
+        if len(ctl) == 1 or ctl[0] == ctl[1]:
+            term = ctl[0]
+        else:
+            term = frozenset([('and', frozenset(ctl))])
+        val[o[-1]] = get(o[-1]) ^ term
+        out.append(o)
+    return out
+
+
 def adjacent_xor(C, a):
     """a[i] ^= a[i + 1] for i < len(a) - 1, from the old values, in about 2 log2 len(a) CX layers:
     the inverse of an in-place suffix XOR done as a Brent-Kung prefix network (Brent and Kung,
@@ -273,7 +309,7 @@ def lookahead_sweep(C, U, V, temps):
     lookahead_chain(C, U, V, temps, lookahead_sizes(n - 1))
 
 
-def add_lookahead(C, a, b, cout, temps, tree=False, cin=None):
+def add_lookahead(C, a, b, cout, temps, tree=False, cin=None, known=None):
     """b += a mod 2^w and cout ^= the carry out (none if cout is None), as add, with both sweeps in
     lookahead form. A wire holding 1 as cin adds 1, as in add; the sweeps restore it.
     The up-sweep leaves add's state after its last _maj (b_i = p_i, the carry wire c_0 ^ a_0,
@@ -298,7 +334,8 @@ def add_lookahead(C, a, b, cout, temps, tree=False, cin=None):
         for i in range(w - 1):
             up.cx(a[i + 1], a[i])
         lookahead_chain(up, [cin] + list(a), [None] + list(b), temps, lookahead_sizes(w))
-    _emit(C, up.ops)
+    ops = up.ops if known is None or not LIVE_FILTER else _live(up.ops, {**known, **{x: () for x in temps}, **({cin: ()} if own else {})})
+    _emit(C, ops)
     if cout is not None:
         C.cx(a[-1], cout)
     C.cx(cin, b[0])
@@ -306,7 +343,7 @@ def add_lookahead(C, a, b, cout, temps, tree=False, cin=None):
         C.cx(a[i - 1], b[i])
     for x in b:
         C.x(x)
-    _emit(C, reversed(up.ops))
+    _emit(C, reversed(ops))
     for x in b:
         C.x(x)
     if own:
@@ -641,9 +678,11 @@ def gt_const_tree(C, value, b, t, ctrl=None):
         C.x(where[i])
     g = _Gates()
     _carry_tree(g, G, [b[i] for i in idx], _TempQueue(temps))
-    _emit(C, g.ops)
+    zeros = [where[i] for i in idx if not value >> i & 1] + list(temps)
+    ops = _live(g.ops, {w: () for w in zeros}) if LIVE_FILTER else g.ops
+    _emit(C, ops)
     _cx(C, ctrl, G[-1], t)
-    _emit(C, reversed(g.ops))
+    _emit(C, reversed(ops))
     for i in ones:
         C.x(where[i])
         C.cx(b[i], where[i])
@@ -665,8 +704,10 @@ def _add_selected_tree(C, b, selectors, masks, max_temps=None):
         return
     A = C.alloc(len(low))
     classes = {}
+    known = {}
     for i, w in enumerate(A):
         key = tuple(s for s, mask in zip(selectors, masks) if mask >> (start + i) & 1)
+        known[w] = key
         if key:
             classes.setdefault(key, []).append(w)
     g = _Gates()
@@ -680,7 +721,7 @@ def _add_selected_tree(C, b, selectors, masks, max_temps=None):
     _emit(C, g.ops)
     want = max(1, tree_temps(len(low) + 1, 1))
     temps = C.alloc(want if max_temps is None else min(want, max_temps))
-    add_lookahead(C, A, low, None, temps, tree=True)
+    add_lookahead(C, A, low, None, temps, tree=True, known=known)
     C.free(temps)
     _emit(C, reversed(g.ops))
     C.free(A)

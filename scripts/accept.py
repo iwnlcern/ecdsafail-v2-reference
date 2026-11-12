@@ -44,7 +44,10 @@ T_PER_CCX = 7
 ALLOWED_GATES = {"X", "CX", "CCX", "SWAP"}
 REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
 COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800, "components": 49, "component_lanes": 8_945,
-            "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6}
+            "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
+            "filter_blocks": 65, "filter_control_blocks": 5,
+            "filter_primes": 170, "filter_small_blocks": 160_198,
+            "filter_control_primes": 52, "filter_control_small_blocks": 12_100}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -181,6 +184,8 @@ class Run:
             "model": [["model_check.py"]],
             "toy": [["check.py", *TOY_ARGS, "--out", w / "toy_exhaustive.json"]],
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
+            "filter": [["filter_check.py", "--out", w / "filter_check.json"]],
+            "filter-small": [["filter_exh.py", "--out", w / "filter_exh.json"]],
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
@@ -561,6 +566,47 @@ def r1_hygiene(run):
     return Result(FAIL if changed else PASS, note, {"files": len(after), "changed": changed})
 
 
+def _last_summary(run, group, script):
+    p, = run.procs(group)
+    rows = json_lines(p.stdout)
+    summary = rows[-1] if rows and rows[-1].get("summary") else None
+    problems = [f"{script} exited {p.rc}, see {p.log}"] * bool(p.rc)
+    if summary is None:
+        problems.append(f"{script} printed no summary, see {p.log}")
+    return p, summary, problems
+
+
+def _row(p, summary, problems, note):
+    evidence = {"exit": p.rc, "summary": summary, "log": p.log, "problems": problems}
+    return Result(FAIL, "; ".join(problems), evidence) if problems else Result(PASS, note(summary), evidence)
+
+
+def i2_filter(run):
+    p, summary, problems = _last_summary(run, "filter", "filter_check.py")
+    if summary is not None:
+        problems += summary["problems"]
+        if summary["filter"]:
+            problems += coverage("blocks", summary["blocks"], "filter_blocks")
+            problems += coverage("control blocks", summary["control"]["blocks"], "filter_control_blocks")
+    return _row(p, summary, problems, lambda s: f"the XOR-sum filter on {s['blocks']} blocks at 16 addends: every wire "
+                f"the same function of (ctrl, b) on every b, the filtered lists the unfiltered ones with "
+                f"{s['removed ccx']:,} CCX removed in order; a wrong zero differs in {len(s['control']['blocks differing'])} "
+                f"of {s['control']['blocks']} blocks at G")
+
+
+def i2_filter_small(run):
+    p, summary, problems = _last_summary(run, "filter-small", "filter_exh.py")
+    if summary is not None:
+        problems += summary["problems"]
+        problems += coverage("primes", summary["primes"], "filter_primes")
+        problems += coverage("blocks", summary["blocks"], "filter_small_blocks")
+        problems += coverage("control primes", summary["control"]["primes"], "filter_control_primes")
+        problems += coverage("control blocks", summary["control"]["blocks"], "filter_control_small_blocks")
+    return _row(p, summary, problems, lambda s: f"the kernel's constant blocks at every constant of {s['primes']} primes "
+                f"up to {s['bound']:,}, {s['blocks']:,} blocks, exact on every b < q with clean scratch; a wrong zero "
+                f"fails {s['control']['failing blocks']:,} of {s['control']['blocks']:,} blocks up to {s['control']['bound']}")
+
+
 class Check(NamedTuple):
     id: str
     title: str
@@ -575,6 +621,8 @@ CHECKS = (
     Check("I2.model", "exactness: classical dialog model and iteration bound", i2_model, ("model",)),
     Check("I2.toy", "exactness: exhaustive gate-level check on toy curves and the emitted toy file", i2_toy, ("toy", "emit:toy127")),
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
+    Check("I2.filter", "exactness: XOR-sum filter preserves constant blocks with a wrong-zero control", i2_filter, ("filter",)),
+    Check("I2.filter-small", "exactness: all small-prime constants with a wrong-zero control", i2_filter_small, ("filter-small",)),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),

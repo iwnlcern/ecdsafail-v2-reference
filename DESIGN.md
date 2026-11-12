@@ -116,3 +116,22 @@ PR #18 sat 13,610 CCX under the reference. This change spends that room where a 
 - **Sell: the square's rows as chains** (`qec/square.py`). A chain has fewer CCX and more ticks than a tree. `ROW_TREE_MIN = (126, 126, 16)` makes the halves' rows chains except their top two, and the halves' sum's rows below 16 bits chains. `SPLIT_TREE = (True, False, False)` makes the takes into K and K's add into Q chains. Each is an existing exact add, chosen per add. The halves' rows cost 0.92 ticks a CCX, the takes 0.24, and K's add nothing. Turning every row to a chain (`ROW_TREE = False`) would cost 1.46, more than the tree buys.
 
 Measured after emit and gate_pass, this took 1,549 wires × 2,088,411 ticks = 3,234,948,639 to 1,549 × 2,005,858 = 3,107,074,042 (−3.95%). CCX went from 7,195,809 to 7,208,765, so T is 50,461,355, 4,578 under the reference's 50,465,933. `TwoBitMod.chain_back` and `point_add.CHAIN_EVERY` let some ticks keep the backward chain to set how many CCX the tree takes. They are checked on toys and unused (`CHAIN_EVERY = 0`).
+
+
+## Filtering constant-tree gates whose control is known zero
+
+This branch builds on ab-godder's PR #29, including its source and circuit-level post-passes.
+The width cut added separately is ab-godder's PR #28.
+The XOR-sum filter is ours, carried from the constant-tree change at 1b15e42.
+LIVE_FILTER defaults on and guards the two uses of _live in arith.py.
+The filter tracks each wire as an XOR of initial symbols; a control whose XOR is empty is exactly zero.
+It removes only gates with such a control, preserving each wire's Boolean function on the full block input domain.
+The recorded order of retained gates is unchanged.
+With LIVE_FILTER off, the emission must reproduce the preceding 549f41faacfb85bfca839ff40a469f20ccd1708fbfe6a02c2d4e202bd5aed036 exactly.
+With it on, the expected emission is caf1a85062e7390a73cfe37f2cc4d8db7176de13cb830d2771c7b1c2e4a19b0e.
+I2.filter checks all-wire Boolean identity of the constant blocks and a wrong-zero control.
+I2.filter-small exhausts the named small primes and constants with a wrong-zero control.
+Both rows run inside the full acceptance gate as well as their standalone per-commit checks.
+The inherited check_hier.py fails on ab-godder's PR #29 source at 61e0c50: hierarchical and flat builds order and label gates differently.
+The committed receipts are preserved. Both builds are checked against the specification separately on every promised toy input; full gates check the hierarchical emission.
+The model's zero-caller convention is distinct from M's standalone nonzero-x promise; nonzero M entries rely on the kernel flags.
