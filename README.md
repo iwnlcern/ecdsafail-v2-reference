@@ -44,33 +44,41 @@ That hash is the reference generator's. This branch's generator emits a differen
 
 ## This branch
 
-This branch is PR #18 on the board (abdowns, `b9b464a`) plus the qubit-time changes in `DESIGN.md`, from "Qubit-time on PR #18" on. Its circuit is the hierarchical emit after `scripts/post_pass.py`. It has not been on the board yet. Its costs were measured locally with `qcb diagnostic check`, which reported 0 failures on the five published challenge roots and on a random root.
+This branch starts from ab-godder's PR #29 source at `61e0c50` and uses its source, passes and circuit-level post-pass. It adds our constant-tree XOR-sum filter, parallel carry tree for the coefficient update (`KPAR`), backward-wave carry network (`WAVE_BACK_ONE`) and parallel folded squaring (`SQ_PAR`). The secp256k1 width cut is ab-godder's PR #28 (`e1b32bb`, merged as `5ca6779`). `DESIGN.md` describes these changes and their controls.
 
-| | Reference | PR #18 | This branch | Board limit |
-|---|---|---|---|---|
-| `lowered_t` | 50,465,933 | 50,135,869 | 50,461,355 | |
-| `qubit_time` | 164,135,627,418 | 3,739,352,040 | 2,969,714,492 | |
-| `toffoli` | 7,209,419 | 7,162,267 | 7,208,765 | |
-| `allocated_wires` | 2,311 | 1,555 | 1,546 | 4,096 |
-| `scheduled_ticks` | 71,023,638 | 2,404,728 | 1,920,902 | |
-| `expanded_ops` charge | 20,960,620 | 18,436,850 | 19,201,248 | 21,696,718 |
-| upload bytes | 43,423,435 | 73,573,976 | 76,683,894 | 104,857,600 |
+| | #29 entered | This branch emitted | This branch post-passed | Board limit |
+|---|---:|---:|---:|---:|
+| wires | 1,546 | 1,546 | 1,546 | 4,096 |
+| scheduled ticks | 1,920,902 | 1,928,261 | 1,856,756 | |
+| qubit-time | 2,969,714,492 | 2,981,091,506 | 2,870,544,776 | |
+| CCX | 7,208,765 | 7,188,435 | 7,187,137 | |
+| T | 50,461,355 | 50,319,045 | 50,309,959 | 50,465,933 |
+| expanded-ops charge | 19,201,248 | 19,673,384 | 19,144,695 | 21,696,718 |
+| JSON bytes | 76,683,894 | 69,643,749 | 75,309,234 (wrapped method) | 104,857,600 |
 
-T is 4,578 under the reference's. Qubit-time is 20.58% under PR #18's. Before the post-passes, the emit with `gate_pass` alone is 1,546 wires × 2,000,528 ticks = 3,092,816,288.
+These are local measurements. Post-passed qubit-time is 3.34% below #29's entered figure. T is 155,974 below the line. The gate pass takes 1,928,261 ticks to 1,910,922 and the reorder pass takes that to 1,856,756.
+
+Every figure carries two limits: I2.model's zero-caller row is narrower than the reference gate; standalone M requires x in [1,q), and nonzero inputs at its kernel entries rely on flag code. The component check explicitly excludes the six x=0 lanes that fail in ab-godder's PR #29 source at `61e0c50`; it covers 49 components and 8,945 lanes instead of 8,951. This does not establish a physical zero-input convention or a universal nonzero-entry proof.
+
+A further inherited source limit is that `scripts/check_hier.py` is red at `61e0c50`: the hierarchical and flat builds order and label gates differently, so its comparison against flat receipts fails. Receipts stay unchanged. Both builds are checked separately against the specification on every promised toy input; the full acceptance gates additionally check the hierarchical upload and I2.secp-flat. `I7.charge` remains a pending gate row; the measured release charge is separate evidence. These local checks do not establish universal qualification.
+
+The scored circuit is the hierarchical emission after #29's deterministic post-pass:
 
 ```sh
 python3.12 -I -B scripts/emit.py --hier --out x.circuit.json
-python3.12 -I -B scripts/post_pass.py x.circuit.json x-pp.json --jobs 8 --rounds 300   # about 15 minutes
+python3.12 -I -B scripts/post_pass.py x.circuit.json x-pp.json --jobs 2 --rounds 300
 python3 wrap.py x-pp.json x.method.json
 ```
 
-`wrap.py` is the reference's `SubmittedMethod` wrapper from release `qcb-8376098` of jtaroreh/ecdsafail-v2-reference. The post-pass is deterministic. The SHA-256 values are:
+`wrap.py` is the reference's SubmittedMethod wrapper from release `qcb-8376098` of jtaroreh/ecdsafail-v2-reference. The locally measured SHA-256 values are:
 
 ```text
-549f41faacfb85bfca839ff40a469f20ccd1708fbfe6a02c2d4e202bd5aed036  x.circuit.json
-c0d5ab92c5da1a41acefc3ce4564e120e73a50438f4b871d1c545c1cf01a911b  x-pp.json
-06a6f7a66db222e1979144ef467f3345678dde63ff9ad3e0dbaed50f25b391ad  x.method.json
+1feca2c1ea0c67e274bd5320c702a0d91373daf9c9824e6de25b5682ee13a609  x.circuit.json
+5649f4139a389cf7ae03b53aff0877e7c81592993d74c32686d299850e9e4d02  x-pp.json
+6ad4f26ff1233d48f5b4acebbefc32789d955f5410509a28b1401feeb75f93e3  x.method.json
 ```
+
+The method hash depends on the wrapper; the circuit pins are the first two hashes. Independent finite tests and final runtime checks are distinct from a board entry or qualification.
 
 ## What this circuit is
 
