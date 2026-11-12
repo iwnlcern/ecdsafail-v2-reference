@@ -149,3 +149,7 @@ KPAR defaults on. Off restores the preceding emission bf0bfb86587a4379dde38d1103
 ## Carry tree in the backward wave
 WAVE_BACK_ONE selects one carry tree network in the backward wave of add_or_shift_la. It preserves the tick flag map, data lanes and clean scratch. It is our change on ab-godder’s source.
 WAVE_BACK_ONE defaults on. Off restores the preceding emission 9b5b72dcd9ff8cf4af00c55c09112528cb1c585ae57f55f33fbde9dd54ce7c3f.
+
+
+## Parallel carry trees in folded squaring
+SQ_PAR is our change on ab-godder’s PR #29 source. It defaults on above SQ_PAR_MIN=200 with six extra temps and two 44-bit tree pools. When the fixed split cannot fit on toy primes, the approved thirds branch applies. The off path preserves the preceding gate order. The test checks every n-bit Y at its toy primes and 14 edge plus 240 seeded random secp256k1 inputs: the square residue, every Y/J wire against the off block, and clean scratch. A real middle CCX-to-CX demotion must fail at secp256k1. I2.square-par runs both checks in the acceptance gate.

@@ -101,3 +101,5 @@ The secp256k1 width cut is ab-godder’s PR #28 argument and schedule. The stand
 KPAR must preserve every tick lane and clean scratch; flag-off emission equals the predecessor. Both full toy specifications and pass equivalence remain required.
 
 WAVE_BACK_ONE must preserve every tick lane and clean scratch; flag-off emission equals the predecessor. Both full toy specifications and pass equivalence remain required.
+
+I2.square-par requires exact residues, unchanged Y/J and clean scratch, including the toy thirds branch; its real CCX demotion must fail at secp256k1. SQ_PAR=False must restore the predecessor emission exactly.

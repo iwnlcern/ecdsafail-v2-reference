@@ -42,6 +42,16 @@ SPLIT_ROWS = True
 # chains the takes and K's add keep 2,858 CCX a square for 208 more ticks (square alone); the sum's
 # add would keep 264 for 473.
 SPLIT_TREE = (True, False, False)
+# With SPLIT_ROWS, make S = Y0 + Y1 from the untouched Y first, then run the three runs of rows (Y0's on lo,
+# Y1's on hi, S's on K) side by side on disjoint temps. The halves' runs take SQ_PAR_T0 and SQ_PAR_T1 wires
+# of the pool (the fold's own clean wires, ROW_TEMPS and SQ_PAR_EXTRA more), S's run the rest, and each
+# run's first wire is its carry in. S's rows are trees only from SQ_PAR_MIN bits, so its run is chains like
+# the halves'.
+SQ_PAR = True
+SQ_PAR_EXTRA = 6
+SQ_PAR_T0 = 44
+SQ_PAR_T1 = 44
+SQ_PAR_MIN = 200
 
 
 def _add(C, a, b, cin=None, temps=()):
@@ -142,7 +152,8 @@ class SquareFold:
             else:
                 for w in Y[i + 1:]:
                     C.cx(Y[i], w)
-            tree = ROW_TREE and n - 1 - i >= ROW_TREE_MIN[run]
+            least = SQ_PAR_MIN if SQ_PAR and run == 2 else ROW_TREE_MIN[run]
+            tree = ROW_TREE and n - 1 - i >= least
             add_lookahead(C, Y[i + 1:], Q[2 * i + 1:n + i], Q[n + i], temps, tree=tree, cin=cin)
         if ROW_FAN_COPIES:
             prefix_xor(C, Y)
@@ -177,20 +188,41 @@ class SquareFold:
         S = C.alloc(h + 1)
         Y0, Y1, lo, hi = Y[:h], Y[h:], Q[:2 * h], Q[2 * h:]
         extra = C.alloc(ROW_TEMPS) if ROW_TREE else []
+        par = C.alloc(SQ_PAR_EXTRA) if SQ_PAR else []
         cin, *temps = list(temps) + extra
-        spare = temps + list(K) + list(S)
-        cut = len(spare) // 2
-        for y, q in zip(Y0, lo):
-            C.cx(y, q)
-        self._pair_rows(C, Y0, lo, spare[1:cut], spare[0], run=0)
-        self._pair_rows(C, Y1, hi, spare[cut + 1:], spare[cut], run=1)
-        start = len(C.prims)
-        for y, s in zip(Y0, S):
-            C.cx(y, s)
-        pad = C.alloc(h - len(Y1))
-        add_lookahead(C, Y1 + pad, S[:h], S[h], temps, tree=SPLIT_TREE[0], cin=cin)
-        made = C.prims[start:]
-        self._pair_rows(C, S, K, temps, cin, run=2)
+        if SQ_PAR:
+            start = len(C.prims)
+            for y, s in zip(Y0, S):
+                C.cx(y, s)
+            pad = C.alloc(h - len(Y1))
+            add_lookahead(C, Y1 + pad, S[:h], S[h], temps, tree=SPLIT_TREE[0], cin=cin)
+            made = C.prims[start:]
+            for y, q in zip(Y0, lo):
+                C.cx(y, q)
+            pool = [cin] + temps + par
+            k0, k1 = SQ_PAR_T0, SQ_PAR_T1
+            if k0 + k1 + 2 > len(pool):
+                # Small moduli: too few wires for the fixed split, so each run takes a third.
+                k0 = k1 = len(pool) // 3
+            g0, g1, g2 = pool[:k0], pool[k0:k0 + k1], pool[k0 + k1:]
+            self._pair_rows(C, Y0, lo, g0[1:], g0[0], run=0)
+            self._pair_rows(C, Y1, hi, g1[1:], g1[0], run=1)
+            self._pair_rows(C, S, K, g2[1:], g2[0], run=2)
+            temps = temps + par
+        else:
+            spare = temps + list(K) + list(S)
+            cut = len(spare) // 2
+            for y, q in zip(Y0, lo):
+                C.cx(y, q)
+            self._pair_rows(C, Y0, lo, spare[1:cut], spare[0], run=0)
+            self._pair_rows(C, Y1, hi, spare[cut + 1:], spare[cut], run=1)
+            start = len(C.prims)
+            for y, s in zip(Y0, S):
+                C.cx(y, s)
+            pad = C.alloc(h - len(Y1))
+            add_lookahead(C, Y1 + pad, S[:h], S[h], temps, tree=SPLIT_TREE[0], cin=cin)
+            made = C.prims[start:]
+            self._pair_rows(C, S, K, temps, cin, run=2)
 
         def take(addend, target):
             fill = C.alloc(len(target) - len(addend))
@@ -213,6 +245,7 @@ class SquareFold:
         target = Q[h:]
         fill = len(target) - len(K)
         add_lookahead(C, list(K) + S[:fill], target, None, temps + S[fill:], tree=SPLIT_TREE[2], cin=cin)
+        C.free(par)
         C.free(extra)
         C.free(S)
 

@@ -47,7 +47,8 @@ COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800, "compo
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6,
             "filter_blocks": 65, "filter_control_blocks": 5,
             "filter_primes": 170, "filter_small_blocks": 160_198,
-            "filter_control_primes": 52, "filter_control_small_blocks": 12_100}
+            "filter_control_primes": 52, "filter_control_small_blocks": 12_100,
+            "square_par_primes": 12, "square_par_secp_inputs": 254}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
 SECP_WORKERS = min(6, os.cpu_count() or 1)
@@ -186,6 +187,7 @@ class Run:
             "toy-hier": [["check.py", *TOY_ARGS, "--hier", "--out", w / "toy_exhaustive_hier.json"]],
             "filter": [["filter_check.py", "--out", w / "filter_check.json"]],
             "filter-small": [["filter_exh.py", "--out", w / "filter_exh.json"]],
+            "square-par": [["square_par_check.py"], ["square_par_check.py", "--control"]],
             "components": [["component_check.py"]],
             "mutation": [["mutation_control.py"]],
             "secp-hier": [["check.py", "--secp", "--hier", "--secp-addend", *map(hex, c), "--secp-random", self.secp_points,
@@ -607,6 +609,35 @@ def i2_filter_small(run):
                 f"fails {s['control']['failing blocks']:,} of {s['control']['blocks']:,} blocks up to {s['control']['bound']}")
 
 
+def i2_square_par(run):
+    normal, control = run.procs("square-par")
+    problems, records = [], []
+    for p, is_control in ((normal, False), (control, True)):
+        rows = json_lines(p.stdout)
+        summary = rows[-1] if rows and "ok" in rows[-1] else None
+        bodies = rows[:-1] if summary is not None else []
+        problems += [f"square_par_check control={is_control} exited {p.rc}, see {p.log}"] * bool(p.rc)
+        if summary is None:
+            problems.append(f"square_par_check control={is_control} has no summary")
+        else:
+            problems += coverage("square primes", summary.get("primes"), "square_par_primes")
+            problems += coverage("square rows", len(bodies), "square_par_primes")
+            if summary.get("ok") is not True or summary.get("control") is not is_control:
+                problems.append(f"square_par_check control={is_control} failed its required result")
+            if not is_control and (summary.get("passed") != COVERAGE["square_par_primes"] or any(r.get("pass") is not True for r in bodies)):
+                problems.append("square normal run has failing prime rows")
+            secp = [r for r in bodies if r.get("q") == "secp256k1"]
+            if len(secp) != 1:
+                problems.append(f"square control={is_control} needs one secp256k1 row")
+            else:
+                problems += coverage("square secp inputs", secp[0].get("inputs"), "square_par_secp_inputs")
+                if is_control and secp[0].get("pass") is not False:
+                    problems.append("square demoted-CCX control did not fail at secp256k1")
+        records.append({"exit": p.rc, "log": p.log, "summary": summary, "rows": bodies})
+    note = "SQ_PAR: exact squares, unchanged Y/J and clean scratch on every toy input and 254 secp inputs; real CCX demotion fails at secp256k1"
+    return Result(FAIL if problems else PASS, "; ".join(problems) if problems else note, {"runs": records, "problems": problems})
+
+
 class Check(NamedTuple):
     id: str
     title: str
@@ -623,6 +654,7 @@ CHECKS = (
     Check("I2.toy-hier", "exactness: same check on the hierarchical upload", i2_toy_hier, ("toy-hier", "emit:toy127.hier")),
     Check("I2.filter", "exactness: XOR-sum filter preserves constant blocks with a wrong-zero control", i2_filter, ("filter",)),
     Check("I2.filter-small", "exactness: all small-prime constants with a wrong-zero control", i2_filter_small, ("filter-small",)),
+    Check("I2.square-par", "exactness: parallel square with real demotion control", i2_square_par, ("square-par",)),
     Check("I2.components", "exactness: 256-bit components on boundary inputs", i2_components, ("components",)),
     Check("I2.mutation", "exactness: the checker rejects mutated circuits", i2_mutation, ("mutation",)),
     Check("I2.secp", "exactness: 256-bit hierarchical upload on exceptional and random points", i2_secp, ("secp-hier", "emit:secp256k1_G.hier")),
