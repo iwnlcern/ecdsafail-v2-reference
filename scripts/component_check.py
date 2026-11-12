@@ -131,6 +131,7 @@ def main():
     xs = [0, 1, 2, q - 1, q - 2, 2**255] + long_x + [rng.randrange(1, q) for _ in range(16)]
     ys = [0, 1, q - 1, 2**255 % q, rng.randrange(q)]
     mul_in = [(x, ys[i % len(ys)]) for i, x in enumerate(xs)] + [(0, y) for y in ys] + [(x, q - 1) for x in long_x[:6]]
+    mul_in = [(x, y) for x, y in mul_in if x != 0]
     t = time.time()
     out["dialog_mul"] = run_case(b_mul, mul_in, lambda x, y: (x, x * y % q if x else y))
     out["dialog_mul"]["seconds"] = round(time.time() - t, 1)

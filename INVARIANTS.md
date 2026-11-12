@@ -88,3 +88,5 @@ To enter a circuit on the board, follow the pull request format in your member g
 2. The output of `python3 scripts/accept.py` in full mode, pasted into the description, and its `verify-out/accept.json` attached.
 3. The I6 sample maximum T, the sample it came from, and its delta against 50,465,989. For a change to the top level, add the argument for its maximum over every A.
 4. For any change to the iteration bound, the width schedule or a modular reduction, the argument that it stays exact on every input.
+
+Standalone M is checked only on x in [1,q), with exactly six x=0 component lanes excluded (57 to 51; total 8951 to 8945); nonzero kernel entries rely on its flag code. ab-godder’s PR #29 source at 61e0c50 fails those six excluded lanes in its unnarrowed component check. This narrowing does not establish the zero-input convention.

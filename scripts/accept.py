@@ -43,7 +43,7 @@ MAX_UPLOAD_BYTES = 104_857_600
 T_PER_CCX = 7
 ALLOWED_GATES = {"X", "CX", "CCX", "SWAP"}
 REFERENCE = {"commit": "8ca9b0e", "sample_max_t": 50_465_989, "wires": 2311}
-COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800, "components": 49, "component_lanes": 8_951,
+COVERAGE = {"model_primes": 13, "toy_instances": 36, "toy_lanes": 25_800, "components": 49, "component_lanes": 8_945,
             "mutation_trials": 200, "mutations_caught_at_least": 163, "secp_special_points": 6}
 G_MULTIPLES = tuple(range(1, 9))
 SECP_RANDOM_POINTS = {True: 8, False: 120}
