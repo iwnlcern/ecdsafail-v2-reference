@@ -44,7 +44,18 @@ TOY = [3, 5, 7, 11, 13, 31, 43, 61, 127, 151, 251, 509, 1021, 4093, 8117, 65521]
 WINDOW = 2
 
 
+from qec import model as _model
+if _model.JUMP4:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import jump_gate_reference as _reference
+
+
 def joint_threshold(q, t):
+    if _model.JUMP4:
+        k = 1
+        while 1 << (5*k + 4*t) < q**5:
+            k += 1
+        return k
     k = 0
     while 1 << (3 * k + 2 * t) <= 2 * q * q * (q - 1):
         k += 1
@@ -53,6 +64,10 @@ def joint_threshold(q, t):
 
 def plan_of(q, lag=None):
     """The plan, or with lag = c the plan that has a lag block of c ticks wherever one fits."""
+    if _model.JUMP4:
+        if lag is not None:
+            raise ValueError("explicit lag is unsupported by the eager schedule")
+        return DialogMultiplier(Circuit(), Mod(q))._jump4_eager_plan()
     saved = DialogMultiplier.LAG_BLOCK, DialogMultiplier.LAG_MIN_SAVING
     if lag:
         DialogMultiplier.LAG_BLOCK, DialogMultiplier.LAG_MIN_SAVING = (lag,), None
@@ -63,6 +78,8 @@ def plan_of(q, lag=None):
 
 
 def thresholds_ok(q, plan):
+    if _model.JUMP4:
+        return plan == _reference.schedule_reference(q, (5*q.bit_length()+3)//4)
     for t, key in enumerate(plan):
         if key is None or key[5] is None:
             if key is not None and key[6]:
@@ -76,6 +93,26 @@ def thresholds_ok(q, plan):
 
 
 def states_ok(q, plan, xs):
+    if _model.JUMP4:
+        if not thresholds_ok(q, plan):
+            return False
+        T = len(plan)
+        for x in xs:
+            ref = _reference.semantic_trace(q, x, T)
+            if not (ref['proof_ok'] and ref['terminal'] and ref['reconstructed'] == (q, x)
+                    and ref['active'] == _reference.oracle_count(q, x)):
+                return False
+            phys = _reference.physical_trace(q, x, T, plan)
+            if not phys['terminal'] or phys['reconstructed'] != (q, x):
+                return False
+            for t, (u, stored, e) in enumerate(phys['states'][:-1]):
+                if max(u, stored).bit_length() > plan[t]['w']:
+                    return False
+                if e and (stored+e <= 0 or (stored+e) % 2):
+                    return False
+                if plan[t]['high'] and u >= 2**plan[t]['k'] and stored >= 2**plan[t]['k']:
+                    return False
+        return True
     for x in xs:
         u, v, e = q, x, 0
         for key in plan:
@@ -331,12 +368,37 @@ def secp_inputs():
 
 def schedule_ok(q, xs, lag=None):
     plan = plan_of(q, lag)
+    if _model.JUMP4:
+        return (all(set(p) == {'w','k','high','carry','fmode','init','scratch'} for p in plan)
+                and thresholds_ok(q, plan) and states_ok(q, plan, xs))
     return (thresholds_ok(q, plan) and states_ok(q, plan, xs)
             and lazy_fields_ok(q, plan) and lazy_states_ok(q, plan, xs)
             and lag_fields_ok(q, plan) and top_free_ok(q, plan) and thermo_ok(q, plan) and lag_states_ok(q, plan, xs))
 
 
 def main():
+    if _model.JUMP4:
+        rows = []
+        for q in TOY + [15361, 16381, 32749]:
+            plan = plan_of(q)
+            rows.append({"q": q, "high_ticks": sum(p['high'] for p in plan),
+                         "lazy_ticks": 0, "lag_ticks": 0, "eager_only": True,
+                         "inputs": q-1, "schedule_ok": schedule_ok(q, range(1, q))})
+        xs = secp_inputs()
+        plan = plan_of(SECP)
+        rows.append({"q": "secp256k1", "high_ticks": sum(p['high'] for p in plan),
+                     "lazy_ticks": 0, "lag_ticks": 0, "eager_only": True,
+                     "inputs": len(xs), "schedule_ok": schedule_ok(SECP, xs)})
+        # Unsupported lag is a rejected request, not claimed forced-lag coverage.
+        try:
+            schedule_ok(31, range(1, 31), lag=1)
+        except ValueError as exc:
+            assert "explicit lag" in str(exc)
+        else:
+            raise AssertionError("eager schedule accepted explicit lag")
+        for row in rows:
+            print(json.dumps(row), flush=True)
+        return 0 if all(row["schedule_ok"] for row in rows) else 1
     rows = [{"q": q, "high_ticks": sum(1 for key in plan_of(q) if key and key[6]),
              "lazy_ticks": sum(1 for key in plan_of(q) if key and key[9]),
              "schedule_ok": schedule_ok(q, range(1, q))} for q in TOY]

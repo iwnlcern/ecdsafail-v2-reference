@@ -16,6 +16,9 @@ from qec import flatten, sim
 from qec.arith import Mod, load_const
 from qec.builder import Circuit
 from qec.emit import write_circuit
+from qec import model as _model
+if _model.JUMP4:
+    import jump_gate_reference as _reference
 from qec.model import tick_bound, tick_joint, tick_mul, tick_pass, tick_sweep, tick_tape, tick_widths
 from qec.point_add import DialogMultiplier
 
@@ -109,6 +112,138 @@ def _lazy_pending(m, plan, states, cells):
     return out
 
 
+def _jump4_pass_detail(q, xs, iters=None):
+    """Check the recorded producer on independent endpoints and fresh maps."""
+    xs = list(xs)
+    maker = Circuit()
+    m = DialogMultiplier(maker, Mod(q))
+    if iters is not None:
+        m.iters = iters
+    plan = m._jump4_eager_plan()
+    expected_plan = _reference.schedule_reference(q, m.iters)
+    if plan != expected_plan:
+        raise ValueError("schedule metadata differs from independent reference")
+    n = q.bit_length()
+    cap = (5*n+3)//4
+    widths = [min(n, max(1, cap-t)) for t in range(m.iters)]
+    tail = widths[-1]
+    lent = min(tail, n-tail)
+    remaining = tail-lent
+    external = 4*m.iters-(n-tail)-lent
+    history_size = 1+sum(p['carry']+int(p['init'])+int(p['fmode'] in ('same','drop')) for p in expected_plan)
+    assert m._jump4_pool_sizes() == (lent, remaining, external)
+    assert m._jump4_junk_size() == history_size
+    sizes = [n, n+external, history_size, 3]
+    block = maker.record_shape(m._jump4_euclid_pass, sizes)
+    assert len(set(block.flat_in)) == len(block.flat_in)
+    assert len(set(block.flat_out)) == len(block.flat_out)
+    refs = [None if x == 0 else _reference.physical_trace(q, x, m.iters, expected_plan) for x in xs]
+    endpoint_u = [q if r is None else r['endpoint'][0] for r in refs]
+    endpoint_pool = [0 if r is None else r['endpoint'][1] | (r['packed_tape'] << remaining) for r in refs]
+    endpoint_junk = [0 if r is None else r['packed_history'] for r in refs]
+    endpoint_header = [0 if r is None else r['header'] for r in refs]
+    results = {}
+    for inverse in (False, True):
+        C = Circuit()
+        pad, spectators = C.alloc(5 if inverse else 2), C.alloc(3)
+        regs = [C.alloc(size) for size in sizes]
+        entry = [list(reg) for reg in regs]
+        if inverse:
+            values = [endpoint_u, endpoint_pool, endpoint_junk, endpoint_header]
+        else:
+            values = [[q]*len(xs), xs, [0]*len(xs), [0]*len(xs)]
+        init = sim.pack([5]*len(xs), spectators)
+        for values_for_reg, reg in zip(values, entry):
+            init.update(sim.pack(values_for_reg, reg))
+        C.apply(block, regs, inverse=inverse)
+        assert len(set(sum(regs, []))) == sum(sizes), "aliased pass register"
+        structural(C.prims, C.num_wires)
+        state = sim.run(C.prims, C.num_wires, init, len(xs))
+        values = ([[q]*len(xs), xs, [0]*len(xs), [0]*len(xs)] if inverse else
+                  [endpoint_u, endpoint_pool, endpoint_junk, endpoint_header])
+        want = sim.pack([5]*len(xs), spectators)
+        for values_for_reg, reg in zip(values, regs):
+            want.update(sim.pack(values_for_reg, reg))
+        bad = 0
+        for w, actual in enumerate(state):
+            bad |= actual ^ want.get(w, 0)
+        results['inverse_bad' if inverse else 'forward_bad'] = bad.bit_count()
+        results['inverse_wires' if inverse else 'forward_wires'] = C.num_wires
+    return results
+
+
+def _jump4_controls():
+    """Inject faults into actual model steps, gates and schedule metadata."""
+    from unittest.mock import patch
+    results = {}
+    for name in ('strip3', 'missing_swap', 'mandatory_half'):
+        reached = [0]
+        def wrong_step(u, v, fault=name):
+            reached[0] += 1
+            if v == 0:
+                return u, v, (0, 0, 0)
+            d = 0
+            while d < (3 if fault == 'strip3' else 4) and v % (2**(d+1)) == 0:
+                d += 1
+            v //= 2**d
+            g = v % 2
+            swap = int(g and u > v and fault != 'missing_swap')
+            if swap:
+                u, v = v, u
+            v -= g*u
+            if fault == 'mandatory_half':
+                v //= 2
+            return u, v, (d, g, swap)
+        with patch.object(_model, '_jump4_step', wrong_step):
+            detected = not all(offset_checks(17, range(1, 17)))
+        results[name] = dict(detected=detected, reached=reached[0])
+    original = DialogMultiplier._jump4_euclid_pass
+    for name in ('header', 'code', 'offset', 'carry', 'flag'):
+        reached = [0]
+        q = 65521 if name == 'flag' else 31
+        def wrong_gate(self, U, pool, junk, H, fault=name):
+            original(self, U, pool, junk, H)
+            reached[0] += 1
+            if fault == 'header':
+                target = H[0]
+            elif fault == 'code':
+                target = self._jump4_coded_tape(pool)[0]
+            elif fault == 'offset':
+                target = junk[0]
+            else:
+                used = 1
+                target = None
+                for p in self._jump4_eager_plan():
+                    if p['init']:
+                        if fault == 'flag':
+                            target = junk[used]
+                            break
+                        used += 1
+                    if p['carry'] and fault == 'carry':
+                        target = junk[used]
+                        break
+                    used += p['carry'] + int(p['fmode'] in ('same','drop'))
+                assert target is not None, "fault target not reached"
+            self.C.x(target)
+        with patch.object(DialogMultiplier, '_jump4_euclid_pass', wrong_gate):
+            detail = _jump4_pass_detail(q, [1, 3, q-1, q//2])
+        results[name] = dict(detail, reached=reached[0],
+                             detected=detail['forward_bad'] > 0 and detail['inverse_bad'] > 0)
+    original_plan = DialogMultiplier._jump4_eager_plan
+    for name, field in [('wrong_k', 'k'), ('wrong_width', 'w')]:
+        reached = [0]
+        def wrong_plan(self, key=field):
+            reached[0] += 1
+            plan = original_plan(self)
+            plan[0][key] += 1
+            return plan
+        with patch.object(DialogMultiplier, '_jump4_eager_plan', wrong_plan):
+            detected = not schedule_check.schedule_ok(31, range(1, 31))
+        results[name] = dict(detected=detected, reached=reached[0])
+    assert all(r['detected'] and r['reached'] > 0 for r in results.values()), results
+    return results
+
+
 def _junk_value(m, q, x):
     """The pass's junk register: E as the last tick found it, then per tick its chain's lowest carries
     c_2 .. c_(carry+1) of U + NOT(V') on its width, V' being V ^ E at bit 0 with a no-subtract
@@ -118,6 +253,8 @@ def _junk_value(m, q, x):
     wrote it. The first lazy tick brings V's extra wire and the counter, which end 0, and the wire for
     p. A raw tick moves p to a new wire, the old one keeping p as the tick found it, a tick of a lag
     block leaves two AND NOT flag, and every lazy tick leaves two AND p."""
+    if _model.JUMP4:
+        return _reference.physical_trace(q, x, m.iters, m._jump4_eager_plan())['packed_history']
     states = tick_pass(q, x, m.iters)[0]
     cells = tick_tape(q, x, m.iters)[2]
     plan = m._tick_plan()
@@ -182,6 +319,12 @@ def _junk_value(m, q, x):
 def joint_domain_ok(q):
     """Before tick t, u * v * max(u, v) <= 2 * q^2 * (q - 1) / 4^t for every x, so U and V are
     never both at or above 2^K_t, and a subtract leaves U below it."""
+    if _model.JUMP4:
+        T = tick_bound(q)
+        expected = _reference.schedule_reference(q, T)
+        return (tick_joint(q, T) == [p['k'] for p in expected]
+                and all(_reference.semantic_trace(q, x, T)['proof_ok']
+                        for x in range(1, q)))
     T = tick_bound(q)
     K, bound = tick_joint(q, T), 2 * q * q * (q - 1)
     for x in range(1, q):
@@ -196,6 +339,9 @@ def joint_domain_ok(q):
 
 
 def _pass_bad(q, xs, iters):
+    if _model.JUMP4:
+        result = _jump4_pass_detail(q, xs, iters)
+        return result['forward_bad'] + result['inverse_bad']
     C = Circuit()
     mod = Mod(q)
     m = DialogMultiplier(C, mod)
@@ -252,6 +398,23 @@ def width_edge_inputs(q: int) -> list[tuple[int, int]]:
 def offset_checks(q, xs):
     """Compare held states and swept cells with the independent semantic tape."""
     T = tick_bound(q)
+    if _model.JUMP4:
+        plan = _reference.schedule_reference(q, T)
+        offset_ok = tape_ok = True
+        for x in xs:
+            ref = _reference.semantic_trace(q, x, T)
+            u, v, cells = tick_tape(q, x, T)
+            tape_ok &= ((u, v) == ref['endpoint'] and cells == ref['tape']
+                        and ref['reconstructed'] == (q, x)
+                        and ref['active'] == _reference.oracle_count(q, x))
+            phys = _reference.physical_trace(q, x, T, plan)
+            header, codes = _model.jump4_physical_tape(q, x, T)
+            offset_ok &= (header == phys['header'] and codes == phys['codes']
+                          and phys['terminal'] and phys['reconstructed'] == (q, x)
+                          and all(U >= 0 and V >= 0 and E in (0, 1)
+                                  and (not E or V+E > 0 and (V+E) % 2 == 0)
+                                  for U, V, E in phys['states']))
+        return bool(offset_ok), bool(tape_ok)
     offset_ok = tape_ok = True
     for x in xs:
         states, cells = tick_pass(q, x, T)
@@ -273,6 +436,9 @@ def offset_checks(q, xs):
 
 
 def trace(q, x):
+    if _model.JUMP4:
+        ref = _reference.semantic_trace(q, x, tick_bound(q))
+        return [max(u, v).bit_length() for u, v in ref['post_strip'][:ref['active']]]
     u, v, sizes = q, x, []
     while v:
         sizes.append(max(u, v).bit_length())
@@ -286,10 +452,15 @@ def trace(q, x):
 
 
 rows = []
+_enabled_controls = _jump4_controls() if _model.JUMP4 else None
 for q in [3, 5, 7, 11, 13, 31, 43, 61, 127, 251, 509, 1021, 4093]:
     B, W = tick_bound(q), tick_widths(q, tick_bound(q))
     worst = 0
     width_ok = True
+    if _model.JUMP4:
+        expected_plan = _reference.schedule_reference(q, B)
+        width_ok = (B == (5*q.bit_length()+3)//4
+                    and W == [p['w'] for p in expected_plan])
     for x in range(q):
         t = trace(q, x)
         worst = max(worst, len(t))
@@ -299,6 +470,9 @@ for q in [3, 5, 7, 11, 13, 31, 43, 61, 127, 251, 509, 1021, 4093]:
     pass_end = all(tick_tape(q, x or 1, B)[:2] == (1, 0) for x in range(q))
     remap_control = [x for x in range(q) if tick_tape(q, x, B)[:2] != (1, 0)] == [0]
     short_rejected = any(tick_tape(q, x or 1, worst - 1)[1] != 0 for x in range(q))
+    if _model.JUMP4:
+        short_rejected &= any(not _reference.semantic_trace(q, x, worst-1)['terminal']
+                              for x in range(1, q))
     short_rejected &= gate_mul(q, ys, iters=worst - 1) > 0
     pass_gates = gate_pass(q) == 0
     pass_zero_outside = gate_pass_zero(q) > 0
@@ -306,6 +480,8 @@ for q in [3, 5, 7, 11, 13, 31, 43, 61, 127, 251, 509, 1021, 4093]:
     inverse_bad = gate_mul(q, ys, inverse=True)
     pass_offset, pass_tape = offset_checks(q, range(1, q))
     joint_ok = joint_domain_ok(q)
+    high_ticks = (sum(p['high'] for p in DialogMultiplier(Circuit(), Mod(q))._jump4_eager_plan())
+                  if _model.JUMP4 else sum(1 for key in DialogMultiplier(Circuit(), Mod(q))._tick_plan() if key and key[6]))
     rows.append({"q": q, "worst_iterations": worst, "bound": B,
                  "width_schedule_ok": width_ok, "multiplier_ok": mul_ok,
                  "pass_end_ok": pass_end, "remap_control_ok": remap_control,
@@ -314,8 +490,10 @@ for q in [3, 5, 7, 11, 13, 31, 43, 61, 127, 251, 509, 1021, 4093]:
                  "forward_bad": forward_bad, "inverse_bad": inverse_bad,
                  "pass_offset_ok": pass_offset, "pass_tape_ok": pass_tape, "pass_zero_outside_domain": pass_zero_outside,
                  "joint_domain_ok": joint_ok, "schedule_ok": schedule_check.schedule_ok(q, range(1, q)),
-                 "high_ticks": sum(1 for key in DialogMultiplier(Circuit(), Mod(q))._tick_plan() if key and key[6])})
-    print(json.dumps(rows[-1]))
+                 "high_ticks": high_ticks})
+    if _model.JUMP4 and q == 3:
+        rows[-1]['controls'] = _enabled_controls
+    print(json.dumps(rows[-1]), flush=True)
 q = 2**256 - 2**32 - 977
 rng = random.Random(1)
 pairs = [(rng.randrange(q), rng.randrange(q)) for _ in range(2000)]
