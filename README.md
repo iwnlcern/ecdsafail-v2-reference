@@ -44,7 +44,13 @@ That hash is the reference generator's. This branch's generator emits a differen
 
 ## This branch
 
-This branch starts from ab-godder's PR #29 source at `61e0c50` and uses its source, passes and circuit-level post-pass. It adds our constant-tree XOR-sum filter, parallel carry tree for the coefficient update (`KPAR`), backward-wave carry network (`WAVE_BACK_ONE`) and parallel folded squaring (`SQ_PAR`). The secp256k1 width cut is ab-godder's PR #28 (`e1b32bb`, merged as `5ca6779`). `DESIGN.md` describes these changes and their controls.
+This branch starts from ab-godder's PR #29 source at `61e0c50` and uses its source, passes and circuit-level post-pass. It adds our constant-tree XOR-sum filter, parallel coefficient update (`KPAR`), reversed backward CX wave (`WAVE_BACK_ONE`) and parallel folded squaring (`SQ_PAR`). The secp256k1 width cut is ab-godder's PR #28 (`e1b32bb`, merged as `5ca6779`). `DESIGN.md` describes these changes and their controls.
+
+`KPAR`: the k update reads the trial's copies of the old k0, k1 and k0 k1, and e's copies on one's clean wire and one more. So its three CCX run side by side instead of each waiting for the last, at the same CCX count. It has no tree.
+
+`WAVE_BACK_ONE`: the add's backward CX wave is the reverse of one `adjacent_xor` network over all of U, the same map as `WAVE_SEG`'s segments, instead of the segments reversed one after another. It is a CX network, not a carry tree.
+
+`SQ_PAR`: with `SPLIT_ROWS`, S = Y0 + Y1 is made first, and the square's three runs of pair rows (Y0's on lo, Y1's on hi, S's on K) run side by side on disjoint temps from one pool: the fold's own clean wires, `ROW_TEMPS`, and `SQ_PAR_EXTRA` = 6 more. `SQ_PAR` is on at every width. `SQ_PAR_T0` and `SQ_PAR_T1` (44 each) are the wire counts the halves' runs take from that pool, and S's run takes the rest. `SQ_PAR_MIN` (200) is the width from which S's rows become trees, so at secp256k1 S's run is chains, like the halves'.
 
 | | #29 entered | This branch emitted | This branch post-passed | Board limit |
 |---|---:|---:|---:|---:|

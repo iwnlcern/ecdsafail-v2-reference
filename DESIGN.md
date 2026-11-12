@@ -141,15 +141,14 @@ The model's zero-caller convention is distinct from M's standalone nonzero-x pro
 This is the width schedule from e1b32bb, merged as 5ca6779. ab-godder proved the cut through Euclid groups of total slack below two and searched 53,613,560,142 nodes, yielding three candidates and no breaks. We cite that original proof and run; the full search is not rerun here. SECP256K1_CUT_LAST defaults to 168; -1 restores the generic schedule and the preceding emission. Other primes retain the generic schedule. The isolated schedule assertion and model, flat and hierarchical toy checks run on this commit.
 
 
-## Parallel carry tree in the coefficient update
-KPAR selects a carry tree for the non-spare aside coefficient update on the KUPD_FAST path. It preserves the tick flag map, data lanes and clean scratch. It is our change on ab-godder’s source.
+## Parallel coefficient update
+`KPAR`: the k update reads the trial's copies of the old k0, k1 and k0 k1, and e's copies on one's clean wire and one more. So its three CCX run side by side instead of each waiting for the last, at the same CCX count. It has no tree.
 KPAR defaults on. Off restores the preceding emission bf0bfb86587a4379dde38d1103f7364d47618a465ca2240fc4340a8ca5c833ab.
 
-
-## Carry tree in the backward wave
-WAVE_BACK_ONE selects one carry tree network in the backward wave of add_or_shift_la. It preserves the tick flag map, data lanes and clean scratch. It is our change on ab-godder’s source.
+## One reversed CX backward wave
+`WAVE_BACK_ONE`: the add's backward CX wave is the reverse of one `adjacent_xor` network over all of U, the same map as `WAVE_SEG`'s segments, instead of the segments reversed one after another. It is a CX network, not a carry tree.
 WAVE_BACK_ONE defaults on. Off restores the preceding emission 9b5b72dcd9ff8cf4af00c55c09112528cb1c585ae57f55f33fbde9dd54ce7c3f.
 
-
-## Parallel carry trees in folded squaring
-SQ_PAR is our change on ab-godder’s PR #29 source. It defaults on above SQ_PAR_MIN=200 with six extra temps and two 44-bit tree pools. When the fixed split cannot fit on toy primes, the approved thirds branch applies. The off path preserves the preceding gate order. The test checks every n-bit Y at its toy primes and 14 edge plus 240 seeded random secp256k1 inputs: the square residue, every Y/J wire against the off block, and clean scratch. A real middle CCX-to-CX demotion must fail at secp256k1. I2.square-par runs both checks in the acceptance gate.
+## Parallel folded squaring
+`SQ_PAR`: with `SPLIT_ROWS`, S = Y0 + Y1 is made first, and the square's three runs of pair rows (Y0's on lo, Y1's on hi, S's on K) run side by side on disjoint temps from one pool: the fold's own clean wires, `ROW_TEMPS`, and `SQ_PAR_EXTRA` = 6 more. `SQ_PAR` is on at every width. `SQ_PAR_T0` and `SQ_PAR_T1` (44 each) are the wire counts the halves' runs take from that pool, and S's run takes the rest. `SQ_PAR_MIN` (200) is the width from which S's rows become trees, so at secp256k1 S's run is chains, like the halves'.
+The off path preserves the preceding gate order. The actual square checker verifies arithmetic residues, every shared Y/J wire and scratch, and its real CCX demotion must fail at secp256k1. I2.square-par runs normal and control checks.
