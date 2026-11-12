@@ -144,3 +144,8 @@ This is the width schedule from e1b32bb, merged as 5ca6779. ab-godder proved the
 ## Parallel carry tree in the coefficient update
 KPAR selects a carry tree for the non-spare aside coefficient update on the KUPD_FAST path. It preserves the tick flag map, data lanes and clean scratch. It is our change on ab-godder’s source.
 KPAR defaults on. Off restores the preceding emission bf0bfb86587a4379dde38d1103f7364d47618a465ca2240fc4340a8ca5c833ab.
+
+
+## Carry tree in the backward wave
+WAVE_BACK_ONE selects one carry tree network in the backward wave of add_or_shift_la. It preserves the tick flag map, data lanes and clean scratch. It is our change on ab-godder’s source.
+WAVE_BACK_ONE defaults on. Off restores the preceding emission 9b5b72dcd9ff8cf4af00c55c09112528cb1c585ae57f55f33fbde9dd54ce7c3f.

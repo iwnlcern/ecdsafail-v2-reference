@@ -282,6 +282,9 @@ SECOND_FRESH = True
 # unchanged until clear_sc) instead of the live wires, and e's copies on one's clean wire and one more, so
 # its three CCX run side by side instead of each waiting for the last to write what it reads. Same CCX.
 KPAR = True
+# The add's backward CX wave as the reverse of one adjacent_xor network over all of U (the same map as
+# WAVE_SEG's segments, whose reverse chains the segments one after another), instead of the segments reversed.
+WAVE_BACK_ONE = True
 # Run the trial chain on copies, beside the second chain.
 WIDE_ASIDE = True
 
@@ -717,7 +720,12 @@ def add_or_shift_la(C, J, a, word, n, k2f=None, k2b=None, ntemps=5, ncopies=6, f
                 temps.give(T[i])
 
     if WIDE_WAVE and wave_back:
-        _emit(C, reversed(wave.ops))
+        if WAVE_BACK_ONE:
+            whole = _Gates()
+            adjacent_xor(whole, U)
+            _emit(C, reversed(whole.ops))
+        else:
+            _emit(C, reversed(wave.ops))
         for j in reversed(range(m)):
             C.cx(U[j + 1], V[j])
             C.cx(copy(V[j]), V[j])                      # V ^= ~J through J's copies, which hold J
