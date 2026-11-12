@@ -139,3 +139,8 @@ The model's zero-caller convention is distinct from M's standalone nonzero-x pro
 
 ## A width cut at secp256k1 (ab-godder, PR #28)
 This is the width schedule from e1b32bb, merged as 5ca6779. ab-godder proved the cut through Euclid groups of total slack below two and searched 53,613,560,142 nodes, yielding three candidates and no breaks. We cite that original proof and run; the full search is not rerun here. SECP256K1_CUT_LAST defaults to 168; -1 restores the generic schedule and the preceding emission. Other primes retain the generic schedule. The isolated schedule assertion and model, flat and hierarchical toy checks run on this commit.
+
+
+## Parallel carry tree in the coefficient update
+KPAR selects a carry tree for the non-spare aside coefficient update on the KUPD_FAST path. It preserves the tick flag map, data lanes and clean scratch. It is our change on ab-godder’s source.
+KPAR defaults on. Off restores the preceding emission bf0bfb86587a4379dde38d1103f7364d47618a465ca2240fc4340a8ca5c833ab.

@@ -278,6 +278,10 @@ ASIDE_UNDO_FIRST = True
 KUPD_FAST = True
 # With WIDE_ASIDE, the second chain on wires the tick has not touched yet.
 SECOND_FRESH = True
+# With WIDE_ASIDE and KUPD_FAST, the k update reads the trial's copies of the old k0, k1 and k0 k1 (sc,
+# unchanged until clear_sc) instead of the live wires, and e's copies on one's clean wire and one more, so
+# its three CCX run side by side instead of each waiting for the last to write what it reads. Same CCX.
+KPAR = True
 # Run the trial chain on copies, beside the second chain.
 WIDE_ASIDE = True
 
@@ -1450,7 +1454,22 @@ class TwoBitMod(Mod):
         if not aside:
             C.cx(sw, b)
             self._end(C, g0, b, sw)
-        if KUPD_FAST and not spare:
+        if KUPD_FAST and not spare and KPAR and aside:
+            # As below, with each update reading the old values from the trial's copies:
+            # sc = (one, k0, k1, k0 k1) as they were, which nothing changes before clear_sc.
+            (e2,) = C.alloc(1)
+            e1 = one
+            C.cx(e, e1)
+            C.cx(e, e2)
+            C.cx(e, k0)
+            C.ccx(sc[3], e, k2)
+            C.ccx(sc[2], e1, three)
+            C.ccx(sc[1], e2, k1)
+            C.cx(e, e2)
+            C.cx(e, e1)
+            C.free([e2, one])
+            one = three
+        elif KUPD_FAST and not spare:
             # k' = k + e, and the second chain's corner selector is k0' k1' = k0 k1 ^ e k1 in the
             # old bits: three holds k0 k1, so one CCX turns it into the corner selector, and three's
             # wire becomes one. one's own wire holds 0 here and is freed instead of three's.

@@ -97,3 +97,5 @@ Their normal blocks must preserve every output and clean scratch, and the wrong-
 LIVE_FILTER off must reproduce the preceding emitted bytes; the full gate retains I2.secp-flat and pending I7.charge.
 
 The secp256k1 width cut is ab-godder’s PR #28 argument and schedule. The standalone multiplier promise and zero-caller limitation remain. Setting SECP256K1_CUT_LAST=-1 must restore the preceding emission exactly.
+
+KPAR must preserve every tick lane and clean scratch; flag-off emission equals the predecessor. Both full toy specifications and pass equivalence remain required.
