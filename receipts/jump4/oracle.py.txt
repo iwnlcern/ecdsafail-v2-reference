@@ -1,0 +1,70 @@
+"""Independent integer reference for capped-strip Euclid iteration counts.
+
+The jump(m) function is used in isolation. Its sampling driver is retained for
+provenance and is not executed by the checks."""
+import json
+import random
+import sys
+from pathlib import Path
+
+Q = 2**256 - 2**32 - 977
+
+
+def ours(q, x):
+    u, v, t = q, x, 0
+    while v:
+        if v & 1:
+            if u > v:
+                u, v = v, u
+            v = (v - u) >> 1
+        else:
+            v >>= 2 if v & 3 == 0 else 1
+        t += 1
+    return t
+
+
+def jump(m):
+    def f(q, x):
+        u, v, t = q, x, 0
+        while v:
+            d = 0
+            while d < m and not v & 1:
+                v >>= 1
+                d += 1
+            if v == 0:
+                break
+            if v & 1:
+                if u > v:
+                    u, v = v, u
+                v -= u
+            t += 1
+        return t
+    return f
+
+
+rules = {"ours": ours, "jump2": jump(2), "jump3": jump(3), "jump4": jump(4)}
+structured = [2**255, 2**255 + 1, 2**128 + 1, 1, 2, 3, Q - 1, Q - 2, (Q + 1) // 2, pow(3, -1, Q)]
+structured += [2**k for k in range(256)] + [Q - 2**k for k in range(255)] + [2**k + 1 for k in range(255)]
+structured += [(Q // 3) ^ k for k in range(64)] + [Q * k // 7 for k in range(1, 7)] + [int(Q / ((1 + 5**0.5) / 2)) + k for k in range(64)]
+structured = [x % Q for x in structured if x % Q]
+rng = random.Random(23)
+rand = [rng.randrange(1, Q) for _ in range(20000)]
+out = {}
+for name, f in rules.items():
+    s = [(f(Q, x), x) for x in structured]
+    r = [(f(Q, x), x) for x in rand]
+    best, bx = max(s + r)
+    climb = random.Random(230 + len(name))
+    cur, cx = best, bx
+    for _ in range(4000):
+        y = cx ^ (1 << climb.randrange(256)) ^ (1 << climb.randrange(256))
+        y %= Q
+        if not y:
+            continue
+        t = f(Q, y)
+        if t >= cur:
+            cur, cx = t, y
+    out[name] = {"structured_max": max(s)[0], "random_max": max(r)[0], "random_mean": round(sum(t for t, _ in r) / len(r), 3),
+                 "climb_max": cur, "lower_bound": max(cur, best), "witness_x": hex(cx if cur >= best else bx)}
+    print(name, json.dumps(out[name]), flush=True)
+Path(sys.argv[1]).write_text(json.dumps(out, indent=1) + "\n")

@@ -1,5 +1,57 @@
 # Exact controlled point addition for `secp256k1-controlled-exact-v1`
 
+## Opt-in Jump-4 multiplier
+
+`QEC_JUMP4=1` selects the raw cap-four multiplier; the unset/default `0`
+keeps the original PR #32 circuit and submitted-method bytes. The flag is
+strict and captured when a multiplier is constructed. Enabled `split()`
+returns false, so the unchanged point-add kernel uses its unsplit branch;
+non-None legacy cut inputs are rejected.
+
+The refined 320-cell secp schedule (sum W 49,280) uses raw four-bit
+cells, a three-bit initial-strip header and live offset E. Eager high
+words apply at gaps of at least three bits, with explicit same/drop flag history,
+and retained 1,933 majority carries allocated from the last step backward.
+The nominal 2,236-wire extra-junk envelope includes E and 302 flag/history
+wires. All history survives the full coefficient reader and is cleared only
+by the same recorded producer inverse. Only unused clean tape or unconsumed
+junk is high-word scratch. Coefficients remain full canonical words.
+
+The coefficient reader derives quiet spans from both existing selector masks and conservatively
+requires zero addends for every K=0..16 in both chains, including the header.
+At secp the shared span is bits 15..31. One Prefix (ours, from PR #2) survives the
+read-only chain and is written/restored only in the second chain. Only the
+first reverse cell uses S=0 with terminal code 7 or padding code 3: R stays
+unchanged and S XOR=g*R. Later cells retain the full canonical map.
+
+Measured at secp G: 2,945,864 raw CCX, 20,621,048 T, 4,096 construction wires.
+The partition is four Euclid traversals at 265,282 each, two integrated
+coefficient traversals at 897,366 each, square 83,828 and glue 6,176.
+Before eager high words the circuit measured 2,996,796 CCX; with them it
+measured 2,961,240. Quiet-run and first-cell specialization remove 15,376
+and bring it 15,144 below PR #32's 2,961,008. The 2G kernel costs 2,945,884 CCX.
+The unsplit fallback's glue is measured; no lost cut saving is inherited.
+Independent immutable-source QA remains separate from builder checks.
+No full gates, scored artifact or qualification are implied.
+
+The same-source eager producer with zero retained carries costs 267,215 CCX.
+Budgets 1, 967 and 1,933 cost 267,214, 266,248 and 265,282 respectively:
+the measured marginal saving is one CCX per carry per traversal. Independently,
+the eager high word itself saves 6,956 CCX per traversal.
+
+The measured reader inventory is raw tape 1,280 + canonical R/S 512 + H 3
++ E/flag/carry history 2,236 + three outside live wires = 4,034, with 49
+internal coefficient wires. The actual whole construction peak is 4,096;
+the inventory alone is not substituted for that measurement. The producer
+block has 3,775 input wires and four internal wires. High-word scratch peaks
+at 53 clean loans, sourced only from future tape or unconsumed junk.
+
+QA-only forced HIGH_MIN1 exercises 13/31/127 and larger joint shapes; the
+extra q=3 forced shape explicitly refuses its three-wire scratch request
+when only two future wires exist. Default production q=3 remains supported.
+
+Credit jtaroreh's PR #32 (https://github.com/jtaroreh/lowt-climb) for the base this builds on, including its eager high word, with the credits PR #32 gives; ab-godder's arith.add with a one-CCX top bit, from PR #9 and PR #28; and our PR #2 (source c39f210) for the shrinking tape pool, the held offset E and Prefix. The Jump-4 step extends the Jump-2 Euclidean algorithm in §5.3.1 of the ECDSA.Fail paper (arXiv:2609.09582) to strip up to four bits; its cap, coefficient cell, selectors and quiet-run specialization are ours.
+
 ## Current mux contract
 
 The merged path now uses the paired-tick contract D1-D4 in [the mux proof](docs/mux-proof.md), superseding the older unrestricted canonical per-symbol Bézout-cell claims below. Logical T and R are canonical and scratch starts clean, but after a non-final B1 the physical word stores H = 2T + R in S4's encoded form, borrowing the next cell's g0 for its high bit. A semantic subtract follows B1; next.g0 must be 1 before holding; a final B1 requires R = 0. The held tick restores the borrowed symbol. Fallback primes retain the old step.

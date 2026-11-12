@@ -1,6 +1,6 @@
 """Swept block-zero D1 code: first subtract swaps for canonical x < q.
 
-P and HOLD from the Round11 checked handover, SHA256
+P and HOLD are the checked gate sequences, SHA256
 2c6bae09f85cf2f2eb5bafc3cdeba0f4ca8235d0d2425ee1197347cb300c3ed3.
 """
 from . import tape_block

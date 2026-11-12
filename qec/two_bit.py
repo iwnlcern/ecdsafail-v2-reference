@@ -21,6 +21,349 @@ place of computing it with a CCX, and H's bits n and n + 1, which a B1 moves off
 clean wires (0 on every other lane) and the next tick takes as its word's top two wires.
 """
 from .arith import Mod, _maj, _selected_carry, cswap, gt_into
+from . import arith
+from functools import lru_cache
+
+# Fixed secp selector circuit. Combo bit0 is 1, bits1..5 are
+# k0..k4; the other entry selects one earlier product, or None.
+_JUMP4_SELECTOR_TABLES = (
+    (((41,None),(35,None)),((49,0),(6,0)),((0,1),(24,0)),
+     ((49,2),(10,0)),((41,0),(37,None)),((37,4),(35,None))),
+    (((41,None),(35,None)),((0,0),(37,None)),((49,None),(0,1)),
+     ((24,0),(20,1)),((0,3),(49,0)),((37,1),(35,0))),
+)
+_JUMP4_SECP_Q = 2**256-2**32-977
+_JUMP4_MONOS = tuple(m for m in range(1,16) if m.bit_count()>=2)
+
+
+def _jump4_solve(basis,target):
+    rows = []
+    for j,v in enumerate(basis):
+        combo = 1<<j
+        for rv,rc in rows:
+            if v^rv<v:
+                v,combo = v^rv,combo^rc
+        if v:
+            rows.append((v,combo))
+            rows.sort(reverse=True)
+    combo = 0
+    for rv,rc in rows:
+        if target^rv<target:
+            target,combo = target^rv,combo^rc
+    if target:
+        raise ValueError("Jump-4 selector table does not span addend")
+    return combo
+
+
+def _jump4_rotate(C,word,controls,marks):
+    """Left rotation, inverse of the right-strip reflection network."""
+    n = len(word)
+    base = min(range(min(2,n)),key=lambda b:sum(
+        sum(i<(m+b-i)%n for i in range(n)) for m in marks))
+    for ctrl,mark in reversed(list(zip(controls,marks))):
+        for i in reversed(range(n)):
+            j = (mark+base-i)%n
+            if i<j:
+                cswap(C,ctrl,[word[i]],[word[j]])
+
+
+def _jump4_swap(C,g,b,R,S):
+    (sw,) = C.alloc(1)
+    C.ccx(g,b,sw)
+    cswap(C,sw,R,S)
+    C.ccx(g,b,sw)
+    C.free([sw])
+
+
+class _Jump4Reduction:
+    """Gate-built Jump-4 coefficient reduction, using ab-godder's arith.add (PR #9, PR #28).
+
+    Fixed secp selector data replaces monomials only in the middle cell.
+    Quiet columns of both masks share one Prefix across both carry chains;
+    spans are derived from those masks, without a selector or modulus search.
+    """
+    def __init__(self,q,scale=False,tables=None):
+        self.q,self.n,self.scale = q,q.bit_length(),scale
+        self.f = (1<<self.n)-q
+        if q%16!=15 or 17*self.f>=1<<self.n:
+            raise ValueError("unsupported Jump-4 optimized modulus")
+        self.w = ((16 if scale else 17)*self.f).bit_length()
+        self.fixed = q==_JUMP4_SECP_Q and not scale
+        self.tables = _JUMP4_SELECTOR_TABLES if tables is None else tables
+        domain = range(16 if scale else 17)
+        def vec(fn):
+            return sum(1<<k for k in domain if fn(k))
+        free = [vec(lambda k:1)]+[vec(lambda k,i=i:(k>>i)&1) for i in range(5)]
+        self.masks = []
+        for chain in range(2):
+            if self.fixed:
+                products = []
+                for ops in self.tables[chain]:
+                    operands = []
+                    for combo,idx in ops:
+                        if not isinstance(combo,int) or not 0<=combo<64 or (idx is not None and not 0<=idx<len(products)):
+                            raise ValueError("invalid Jump-4 affine selector operand")
+                        value = 0
+                        for j,t in enumerate(free):
+                            if combo>>j&1:
+                                value ^= t
+                        if idx is not None:
+                            value ^= products[idx]
+                        operands.append(value)
+                    if len(operands)!=2:
+                        raise ValueError("invalid Jump-4 selector product")
+                    products.append(operands[0]&operands[1])
+                if len(products)!=6:
+                    raise ValueError("Jump-4 requires six fixed products")
+                basis = free+products
+            else:
+                basis = free+[vec(lambda k,m=m:k&m==m) for m in _JUMP4_MONOS]
+            masks = [0]*len(basis)
+            for i in range(self.w):
+                target = vec(lambda k,i=i:(((k+(chain==0))*self.f)>>i)&1)
+                combo = _jump4_solve(basis,target)
+                # Independently re-evaluate the chosen truth-table mask.
+                rebuilt = 0
+                for j,t in enumerate(basis):
+                    if combo>>j&1:
+                        rebuilt ^= t
+                        masks[j] |= 1<<i
+                if rebuilt!=target:
+                    raise ValueError("Jump-4 selector reconstruction mismatch")
+            self.masks.append(tuple(masks))
+        # A quiet bit's selected addend is zero for every selector state in
+        # BOTH chains. Never infer eligibility from one convenient quotient.
+        used=0
+        for masks in self.masks:
+            for mask in masks:used |= mask
+        # The part-1 proof deliberately requires K=0..16 in BOTH chains,
+        # even for the four-bit header. Its physical domain is narrower,
+        # but do not widen spans using that narrower promise.
+        for chain in range(2):
+            for k in range(17):used |= (k+(chain==0))*self.f
+        self.quiet_runs=[]
+        i=1
+        while i<self.w:
+            j=i
+            while j<self.w and not (used>>j)&1:j+=1
+            if j-i>=2:self.quiet_runs.append((i,j))
+            i=max(i+1,j)
+
+    def and_gate(self,C,ops,base,prods,k):
+        ends,made = [],[]
+        for combo,idx in ops[k]:
+            terms = [base[j] for j in range(1,6) if combo>>j&1]
+            if idx is not None:
+                terms.append(prods[idx])
+            if len(terms)==1 and not combo&1:
+                ends.append(terms[0]);continue
+            (a,) = C.alloc(1)
+            for t in terms:
+                C.cx(t,a)
+            if combo&1:
+                C.x(a)
+            ends.append(a);made.append((a,terms,combo&1))
+        C.ccx(ends[0],ends[1],prods[k])
+        for a,terms,neg in reversed(made):
+            if neg:
+                C.x(a)
+            for t in terms:
+                C.cx(t,a)
+            C.free([a])
+
+    def make_selectors(self,C,K,chain,one):
+        masks = self.masks[chain]
+        if self.fixed:
+            base = [one]+K
+            prods = C.alloc(6)
+            ops = self.tables[chain]
+            for k in range(6):
+                self.and_gate(C,ops,base,prods,k)
+            wires = base+prods
+            made = ('fixed',ops,base,prods)
+        else:
+            wires = [one]+K+[None]*len(_JUMP4_MONOS)
+            made_gates,monos = [],{}
+            for j,m in enumerate(_JUMP4_MONOS,6):
+                if not masks[j]:
+                    continue
+                bits = [i for i in range(4) if m>>i&1]
+                prev = K[bits[0]]
+                for t in range(1,len(bits)):
+                    key = tuple(bits[:t+1])
+                    if key not in monos:
+                        (x,) = C.alloc(1)
+                        C.ccx(prev,K[bits[t]],x)
+                        made_gates.append((prev,K[bits[t]],x));monos[key]=x
+                    prev = monos[key]
+                wires[j] = prev
+            made = ('monomial',made_gates)
+        used = [j for j,m in enumerate(masks) if m]
+        if any(wires[j] is None for j in used):
+            raise ValueError("missing Jump-4 selector wire")
+        return [wires[j] for j in used],[masks[j] for j in used],made
+
+    def unmake(self,C,made):
+        if made[0]=='fixed':
+            _,ops,base,prods = made
+            for k in reversed(range(6)):
+                self.and_gate(C,ops,base,prods,k)
+            C.free(prods)
+        else:
+            for a,b,x in reversed(made[1]):
+                C.ccx(a,b,x);C.free([x])
+
+    def chain_up(self,C,L,sels,masks,prefixes):
+        chain={0:None}
+        def rise(i):
+            (c,)=C.alloc(1)
+            _selected_carry(C,L[i],sels,masks,i,chain[i],c)
+            chain[i+1]=c
+        i=0
+        for (a,b),P in zip(self.quiet_runs,prefixes):
+            for j in range(i,a):rise(j)
+            (out,)=C.alloc(1);C.ccx(chain[a],P.top,out)
+            chain[b]=out;i=b
+        for j in range(i,self.w):rise(j)
+        return chain
+
+    def chain_down(self,C,L,sels,masks,chain,write,prefixes):
+        def fall(i):
+            _selected_carry(C,L[i],sels,masks,i,chain[i],chain[i+1])
+            C.free([chain[i+1]])
+            if write:
+                for s,m in zip(sels,masks):
+                    if m>>i&1:C.cx(s,L[i])
+                if chain[i] is not None:C.cx(chain[i],L[i])
+        i=self.w
+        for (a,b),P in reversed(list(zip(self.quiet_runs,prefixes))):
+            for j in reversed(range(b,i)):fall(j)
+            C.ccx(chain[a],P.top,chain[b]);C.free([chain[b]])
+            # First chain is read-only: its Prefix survives the quotient
+            # increment. Only the second chain writes/restores/frees it.
+            if write:P.write(chain[a])
+            i=a
+        for j in reversed(range(i)):fall(j)
+
+    def increment(self,C,e,K):
+        c = [e]+C.alloc(len(K)-1)
+        for i in range(len(K)-1):
+            C.ccx(c[i],K[i],c[i+1])
+        for i in range(len(K)-1,0,-1):
+            C.cx(c[i],K[i]);C.ccx(c[i-1],K[i-1],c[i])
+        C.cx(e,K[0]);C.free(c[1:])
+
+    def reduce(self,C,low):
+        n,w = self.n,self.w
+        L,H,K = low[:w],low[w:n],low[n:]
+        (one,) = C.alloc(1)
+        C.x(one)
+        P = Prefix(C,H)
+        quiet = [Prefix(C,L[a:b]) for a,b in self.quiet_runs]
+        key = K+[None] if self.scale else K
+        sels,masks,made = self.make_selectors(C,key,0,one)
+        chain = self.chain_up(C,L,sels,masks,quiet)
+        (e,) = C.alloc(1)
+        if H:
+            C.ccx(P.top,chain[w],e)
+        else:
+            C.cx(chain[w],e)
+        self.chain_down(C,L,sels,masks,chain,False,quiet)
+        self.unmake(C,made)
+        self.increment(C,e,K)
+        sels,masks,made = self.make_selectors(C,key,1,one)
+        chain = self.chain_up(C,L,sels,masks,quiet)
+        if H:
+            C.ccx(P.top,chain[w],e)
+        else:
+            C.cx(chain[w],e)
+        C.free([e])
+        P.write(chain[w])
+        self.chain_down(C,L,sels,masks,chain,True,quiet)
+        self.unmake(C,made)
+        C.x(one);C.free([one])
+        return low[:n],K
+
+    def clear_low(self,C,D,K,e0,e1,t):
+        (anybit,) = C.alloc(1)
+        for x in (e0,e1,t):
+            C.cx(x,anybit)
+        C.cx(D[0],K[0])
+        C.ccx(anybit,D[1],K[1]);C.ccx(e1,D[2],K[2]);C.ccx(t,D[3],K[3])
+        for x in (e0,e1,t):
+            C.cx(x,anybit)
+        C.free([anybit])
+
+    def move_top(self,C,h,K,T):
+        for i in range(4):
+            cswap(C,h[i],[K[i+1]],[T])
+
+    def clear_k(self,C,g,e0,e1,R,S,K):
+        D = C.alloc(4)
+        for i in range(4):
+            C.cx(S[i],D[i])
+        arith.sub(C,R[:4],D,ctrl=g)
+        (t,) = C.alloc(1)
+        C.ccx(e0,e1,t)
+        self.clear_low(C,D,K,e0,e1,t)
+        h = C.alloc(4)
+        descriptions = ((h[3],(t,),False),(h[2],(e1,t),False),
+                        (h[1],(e0,t),False),(h[0],(e0,e1,t),True))
+        for x,srcs,neg in descriptions:
+            for s in srcs:
+                C.cx(s,x)
+            if neg:
+                C.x(x)
+        y,made,prev = C.alloc(4),[],g
+        for i in range(4):
+            C.x(D[i]);C.ccx(prev,D[i],y[i]);C.x(D[i])
+            made.append((prev,D[i],y[i]));prev=y[i]
+        (z,T) = C.alloc(2)
+        for i in range(4):
+            C.ccx(h[i],y[i],z)
+        self.move_top(C,h,K,T)
+        gt_into(C,R,S,T,ctrl=z)
+        C.free([T])
+        for i in range(4):
+            C.ccx(h[i],y[i],z)
+        C.free([z])
+        for prev,d,yi in reversed(made):
+            C.x(d);C.ccx(prev,d,yi);C.x(d)
+        C.free(y)
+        for x,srcs,neg in descriptions:
+            if neg:
+                C.x(x)
+            for s in srcs:
+                C.cx(s,x)
+        C.free(h);C.ccx(e0,e1,t);C.free([t])
+        arith.add(C,R[:4],D,ctrl=g)
+        for i in range(4):
+            C.cx(S[i],D[i])
+        C.free(D)
+
+    def clear_scale(self,C,H,S,K):
+        h0,h1,h2 = H
+        (t,) = C.alloc(1)
+        C.ccx(h0,h1,t)
+        f = C.alloc(4)
+        descriptions = ((f[0],(h0,h1,h2,t)),(f[1],(h1,h2)),(f[2],(t,h2)),(f[3],(h2,)))
+        for x,srcs in descriptions:
+            for s in srcs:
+                C.cx(s,x)
+        for i in range(4):
+            C.ccx(f[i],S[i],K[i])
+        for x,srcs in descriptions:
+            for s in srcs:
+                C.cx(s,x)
+        C.free(f);C.ccx(h0,h1,t);C.free([t])
+
+
+@lru_cache(maxsize=None)
+def _jump4_reduction(q,scale=False):
+    return _Jump4Reduction(q,scale)
+
+
+
 
 
 class Prefix:
@@ -114,6 +457,60 @@ class Prefix:
 
 
 class TwoBitMod(Mod):
+    def jump4_cell(self,C,cell,R,S):
+        """Canonical (R,S) -> swap_gb(R,2^D S+gR mod q), tape unchanged."""
+        if len(cell)!=4 or len(R)!=self.n or len(S)!=self.n:
+            raise ValueError("invalid Jump-4 coefficient shape")
+        e0,e1,g,b = cell
+        if self.q%16!=15 or 17*self.f>=1<<self.n:
+            self.moddbl(C,S)
+            self._cdbl(C,e0,S)
+            for _ in range(2):
+                self._cdbl(C,e1,S)
+            self.modadd(C,R,S,ctrl=g)
+            _jump4_swap(C,g,b,R,S)
+            return
+        reduction = _jump4_reduction(self.q)
+        word = S+C.alloc(4)
+        (ex,) = C.alloc(1)
+        C.cx(e0,ex);C.cx(e1,ex)
+        _jump4_rotate(C,word[:self.n+3],[e0,ex,e1],(3,2,0))
+        C.cx(e1,ex);C.cx(e0,ex);C.free([ex])
+        pad = C.alloc(5)
+        arith.add(C,R[1:]+pad,word,ctrl=g)
+        C.free(pad)
+        (l0,) = C.alloc(1)
+        C.ccx(g,R[0],l0)
+        Sp,K = reduction.reduce(C,[l0]+word)
+        reduction.clear_k(C,g,e0,e1,R,Sp,K)
+        C.free(K)
+        _jump4_swap(C,g,b,R,Sp)
+        S[:] = Sp
+
+
+    def jump4_scale(self,C,H,S):
+        """Canonical S -> 2^H S mod q, H=0..4, header unchanged."""
+        if len(H)!=3 or len(S)!=self.n:
+            raise ValueError("invalid Jump-4 scale shape")
+        if self.q%16!=15 or 17*self.f>=1<<self.n:
+            for bit,repeats in zip(H,(1,2,4)):
+                for _ in range(repeats):
+                    self._cdbl(C,bit,S)
+            return
+        reduction = _jump4_reduction(self.q,True)
+        word = S+C.alloc(4)
+        a,b = C.alloc(2)
+        C.cx(H[0],a);C.cx(H[2],a);C.cx(H[0],b);C.cx(H[1],b)
+        _jump4_rotate(C,word,[a,b,H[1],H[2]],(4,3,1,0))
+        C.cx(H[1],b);C.cx(H[0],b);C.cx(H[2],a);C.cx(H[0],a)
+        C.free([a,b])
+        Sp,K = reduction.reduce(C,word)
+        reduction.clear_scale(C,H,Sp,K)
+        C.free(K)
+        S[:] = Sp
+
+
+
     def __init__(self, q):
         super().__init__(q)
         n = self.n

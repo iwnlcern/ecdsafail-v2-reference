@@ -1,5 +1,58 @@
 # Invariants for changes to the circuit
 
+## Opt-in Jump-4 physical boundary
+
+The multiplier preserves the public nonzero-x canonical multiplier map, full coefficients,
+and actual unsplit kernel. Cells archive NEXT D1..4, true parity g, and b as
+swap on g1 or incoming E on g0. Stored V is true v minus E; never reconstruct
+E from output parity alone. Refined W/K apply after the initial/current strip.
+
+The eager high word reads z = [U >= 2^K] and zg = g*z on the joint-exclusion
+domain; b cannot replace g because b also archives incoming E. On a same-K
+transition, z becomes z XOR zg and zg is retained on its own history slot.
+On a one-bit drop, the new flag is (z AND NOT g) OR U[K-1]; the old flag is
+archived and the temporary zg is cleared. The last high word clears zg and
+retains its last flag for inverse replay. The q97/x65/t1 witness has z=1,
+g=0,b=1 and must retain z across that drop.
+
+Retained c2..c_(m+1) are majority carries of U and complemented true V. They
+are allocated from the last step backward, with m <= chain-1 and m <= K-1
+for high words. E is inside the 2,236-wire junk envelope, together with flag
+history and carries. H, every history wire and tape survive the coefficient
+reader unchanged and are cleared only by the same recorded producer inverse.
+
+Only proven-zero U/V tails enter the future tape supply. High-word scratch
+borrows available future raw tape first, then unconsumed junk; none is a prior
+cell or archived carry/flag. These loans return zero before first actual use.
+Producer input/output port sets coincide, though their wire permutation changes.
+Inverse uses the same recorded producer with independently mapped endpoint values.
+
+Local checks cover the four-port pool and explicit zero-tail boundaries both
+ways, every zero/one/partial/max carry budget, and history preservation through B.
+Composition release observations cover composition events; nested step/cell
+releases are tested separately. Tests pack fresh expected inverse states and
+live spectators, and inject actual carry/flag/high-word/future-tape faults.
+Construction census and off pins are local checks; the default mode retains
+the PR #32 off pins.
+
+Quiet runs are common all-zero addend columns for BOTH selector chains over
+K=0..16. Header masks alone permit a wider physical-domain run; this mode
+keeps the same conservative 0..16 proof. Prefix may temporarily borrow run
+bits, so neither carry chain reads them except through Prefix.top until the
+second chain calls Prefix.write. First-chain bridge uncomputation leaves
+the Prefix intact across selector unmake and K+e. The second unbridges before
+writing the incoming carry, restoring borrowed wires and releasing scratch.
+Directed tests include positive and complementary kF overflow boundaries;
+corrupting span, mask or selector products must fail both directions.
+
+Only the first reverse cell starts with S=0 and code 3 or 7, whose b=0.
+The full map is then R unchanged and S XOR=g*R, with all code wires retained.
+All later cells use the full canonical map. Complete transcript tests enforce
+terminal code 7 followed only by padding code 3. Fresh inverse tests pack
+independent expected endpoints, and an ordinary-cell specialization fault
+must fail reachable multiplication. The whole measured G peak remains 4096;
+no saved coefficient scratch is converted into extra retained carries.
+
 
 ## Current mux contract
 

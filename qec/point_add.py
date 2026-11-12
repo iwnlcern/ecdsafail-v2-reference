@@ -10,8 +10,58 @@ from .square import SquareFold
 from .zero_prefix import ZeroPrefix
 from .two_bit import TwoBitMod
 from .model import tick_bound, tick_joint, tick_widths
+from . import model
 from . import block0_code, rank_one, tail_code, tape_block, two_bit
 from .tape_block import FREE, TICKS
+
+
+def _fan(C, src, copies):
+    """CX tree that XORs src onto each copy, doubling the wires that hold it each layer. Returns
+    the tree's (source, target) pairs in order; replaying them reversed undoes it."""
+    tree, have, todo = [], [src], list(copies)
+    while todo:
+        layer = [(h, todo.pop(0)) for h in list(have)[:len(todo)]]
+        for h, t in layer:
+            C.cx(h, t)
+        tree += layer
+        have += [t for _, t in layer]
+    return tree
+
+
+def _jump4_reflect(C, ctrl, V, mark, copies):
+    """R_mark reflection, with clean fanout on each boundary."""
+    tree = _fan(C, ctrl, copies)
+    controls = [ctrl] + list(copies)
+    pairs = [(i, (mark - i) % len(V)) for i in range(len(V))
+             if i < (mark - i) % len(V)]
+    for k, (i, j) in enumerate(pairs):
+        cswap(C, controls[k % len(controls)], [V[i]], [V[j]])
+    for source, target in reversed(tree):
+        C.cx(source, target)
+
+
+def _jump4_rotate_header(C, V, H, copies):
+    """Rotate by H=0..4; wrapped input bits must be zero for a logical strip."""
+    L = len(V)
+    def base_for(marks):
+        # Counts depend only on parity in the rotation reflection network.
+        return min(range(min(2, L)), key=lambda b: sum(
+            sum(i < (m + b - i) % L for i in range(L)) for m in marks))
+    (middle,) = C.alloc(1)
+    # Marks (4,3,1,0) use pairs (4,3),(3,1),(4,1),(4,0) for d=1..4.
+    # Their predicates are affine on the legal H=0..4 domain.
+    b = base_for((4, 3, 1, 0))
+    C.cx(H[0], middle)
+    C.cx(H[2], middle)
+    _jump4_reflect(C, middle, V, 4 + b, copies)
+    C.cx(H[2], middle)
+    C.cx(H[1], middle)
+    _jump4_reflect(C, middle, V, 3 + b, copies)
+    C.cx(H[1], middle)
+    C.cx(H[0], middle)
+    C.free([middle])
+    _jump4_reflect(C, H[1], V, 1 + b, copies)
+    _jump4_reflect(C, H[2], V, b, copies)
 
 
 class DialogMultiplier:
@@ -51,7 +101,285 @@ class DialogMultiplier:
     # the default run ends, so the exit swap's gate moves the run's ends to where built inputs do.
     LAG_SPAN = None
 
+    def _jump4_initial_strip(self, cp=0):
+        """V=x -> x>>d0, H=d0; nonzero x, clean H/copies on entry.
+
+        H retains min(4,nu2(x)). Prefix scratch is cleared before rotations;
+        wrapped bits are known zero. No physical cell codec is selected here.
+        """
+        if cp < 0:
+            raise ValueError("negative copy count")
+        cache = getattr(self, '_jump4_initial_blocks', None)
+        if cache is None:
+            cache = self._jump4_initial_blocks = {}
+        if cp not in cache:
+            C, n = self.C, self.mod.n
+            def body(V, H, copies):
+                z = C.alloc(4)
+                def prefix(i):
+                    if i >= n:
+                        C.cx(z[i - 1], z[i])
+                    elif i == 0:
+                        C.x(z[0])
+                        C.cx(V[0], z[0])
+                    else:
+                        C.x(V[i])
+                        C.ccx(z[i - 1], V[i], z[i])
+                        C.x(V[i])
+                for i in range(4):
+                    prefix(i)
+                # d0 is the sum of nested zero-prefix bits.
+                for i in range(4):
+                    C.cx(z[i], H[0])
+                C.cx(z[1], H[1])
+                C.cx(z[3], H[1])
+                C.cx(z[3], H[2])
+                for i in reversed(range(4)):
+                    prefix(i)
+                C.free(z)
+                _jump4_rotate_header(C, V, H, copies)
+            cache[cp] = C.record_shape(body, [n, 3, cp])
+        return cache[cp]
+
+
+    def _jump4_step(self, w, first=False, cp=0, carry=0, kappa=None, high=False, fmode=None, init=False):
+        """One shared-chain subtraction and NEXT strip, with live offset E.
+
+        Input U is positive odd. E1 stores positive even v as V=v-1.
+        Cell bits are (D-1)[0:2], g, b; b archives E_in on g0,
+        and swap on g1. The first known-zero strip is a wire relabel.
+        """
+        if w < 1 or cp < 0:
+            raise ValueError("invalid Jump-4 step shape")
+        cache = getattr(self, '_jump4_steps', None)
+        if cache is None:
+            cache = self._jump4_steps = {}
+        assert 0<=carry<=max((kappa if high else w)-1,0)
+        assert not high or kappa is not None and 1<=kappa<w and fmode
+        extended=bool(carry or kappa is not None or high or fmode or init)
+        scratch_n=(w-kappa+1 if high else 0)+int(bool(fmode) and fmode!='same')
+        if init:scratch_n=max(scratch_n,max(0,w-kappa-2))
+        key = (w,bool(first),cp,carry,kappa,high,fmode,init)
+        if key not in cache:
+            C = self.C
+            def body(U, V, E, cell, copies, junk=None, flag=None, slot=None, scratch=None):
+                junk=[] if junk is None else junk
+                flag=[] if flag is None else flag
+                slot=[] if slot is None else slot
+                scratch=[] if scratch is None else scratch
+                if init:self._or_into(U[kappa:w],flag[0],scratch)
+                zg=slot[0] if fmode=='same' else scratch[-1] if fmode else None
+                k0, k1, g, b = cell
+                # For g0/E1, toggling the stored low one makes true v-2;
+                # after the free half it is again true v/2-1. E is retained.
+                C.cx(E[0], V[0])
+                C.cx(V[0], g)
+                if fmode:C.ccx(g,flag[0],zg)
+                if high:
+                    self._jump4_difference(U,V,g,b,copies=copies,junk=junk,high=w-kappa,held=(flag[0],zg),scratch=scratch)
+                else:
+                    self._jump4_difference(U,V,g,b,copies=copies,junk=junk)
+                V[:] = V[1:] + V[:1]
+                C.cx(E[0], b)
+                if fmode:self._jump4_update_flag(U,g,b,flag,slot,zg,kappa,fmode)
+
+                # Nested true-zero prefixes after the first strip. Offset
+                # branch true zeros appear as stored ones, detected by XOR b.
+                z = C.alloc(3)
+                def prefix(i):
+                    if i >= w:
+                        C.cx(z[i-1], z[i])
+                    else:
+                        C.cx(b, V[i])
+                        C.x(V[i])
+                        if i == 0:
+                            C.cx(V[i], z[i])
+                        else:
+                            C.ccx(z[i-1], V[i], z[i])
+                        C.x(V[i])
+                        C.cx(b, V[i])
+                for i in range(3):
+                    prefix(i)
+                for bit in z:
+                    C.cx(bit, k0)
+                C.cx(z[1], k1)
+                for i in reversed(range(3)):
+                    prefix(i)
+                C.free(z)
+
+                # Clear known low ones before the rotation can wrap them.
+                (both,) = C.alloc(1)
+                C.ccx(k0, k1, both)
+                C.ccx(b, k0, V[0])
+                C.ccx(b, k1, V[0])
+                C.ccx(b, both, V[0])
+                if w > 1:
+                    C.ccx(b, k1, V[1])
+                if w > 2:
+                    C.ccx(b, both, V[2])
+                C.ccx(k0, k1, both)
+                C.free([both])
+
+                # Three reflections implement k=D-1=0..3.
+                base = min(range(min(w,2)),key=lambda b0:sum(
+                    sum(i < (m+b0-i)%w for i in range(w)) for m in (3,2,0)))
+                _jump4_reflect(C, k0, V, 3+base, copies)
+                (middle,) = C.alloc(1)
+                C.cx(k0, middle)
+                C.cx(k1, middle)
+                _jump4_reflect(C, middle, V, 2+base, copies)
+                C.cx(k1, middle)
+                C.cx(k0, middle)
+                C.free([middle])
+                _jump4_reflect(C, k1, V, base, copies)
+
+                # E still holds E_in. Swap normalizes true odd outputs and
+                # retains E only on capped positive-even offset outputs.
+                cswap(C, b, [V[0]], E)
+                C.ccx(g, b, V[0])
+            sizes=[w,w,1,4,cp]
+            if extended:sizes += [carry,int(bool(fmode)),int(fmode in ('same','drop')),scratch_n]
+            cache[key] = C.record_shape(body,sizes)
+        return cache[key]
+
+
+    def _jump4_bezout_pass(self,G,H,R,S):
+        """Reverse a complete transcript from S=0, then initial header scale.
+
+        The first code is terminal7 or padding3 (b=0): only S ^= g*R.
+        Every subsequent cell keeps the full arbitrary canonical-state map.
+        """
+        n,T = self.mod.n,self.iters
+        if [len(r) for r in (G,H,R,S)] != [4*T,3,n,n]:
+            raise ValueError("invalid Jump-4 coefficient pass layout")
+        blocks = getattr(self,'_jump4_coefficient_blocks',None)
+        if blocks is None:
+            C,tw = self.C,self.narrow
+            def first_body(cell,r,s):
+                for a,b in zip(r,s):C.ccx(cell[2],a,b)
+            def cell_body(cell,r,s):
+                tw.jump4_cell(C,cell,r,s)
+            def scale_body(h,s):
+                tw.jump4_scale(C,h,s)
+            blocks = (C.record_shape(first_body,[4,n,n]),
+                      C.record_shape(cell_body,[4,n,n]),C.record_shape(scale_body,[3,n]))
+            self._jump4_coefficient_blocks = blocks
+        for t in reversed(range(T)):
+            cell = G[4*t:4*t+4]
+            self.C.apply(blocks[0 if t==T-1 else 1],[cell,R,S])
+            G[4*t:4*t+4] = cell
+        self.C.apply(blocks[2],[H,S])
+
+
+    def _jump4_update_flag(self,U,g,b,flag,slot,zg,kappa,mode):
+        C=self.C
+        if mode=='same':C.cx(zg,flag[0])
+        elif mode=='drop':
+            new,bit=slot[0],U[kappa-1]
+            C.cx(flag[0],zg);C.cx(bit,new);C.x(bit);C.ccx(zg,bit,new);C.x(bit)
+            C.cx(flag[0],zg);C.ccx(g,flag[0],zg)
+            flag[0],slot[0]=new,flag[0]
+        elif mode=='final':C.ccx(g,flag[0],zg)
+        else:raise ValueError('invalid Jump4 flag transition')
+
+    def _jump4_difference(self,U,V,g,b,copies=(),junk=None,high=0,held=None,scratch=None):
+        # PR32 majority carries/high word; no lazy, top-bit or rule changes.
+        self._shared_difference(U,V,g,b,junk=junk,high=high,held=held,scratch=scratch)
+
+    def _jump4_eager_plan(self):
+        W=self.widths;K=tick_joint(self.mod.q,self.iters)
+        minimum=getattr(self,'jump4_high_min',self.HIGH_MIN)
+        plan=[dict(w=w,k=k,high=w-k>=minimum,carry=0,fmode=None,init=False,scratch=0) for w,k in zip(W,K)]
+        flagged=[i for i,p in enumerate(plan) if p['high']]
+        if flagged:
+            first,last=flagged[0],flagged[-1]
+            plan[first]['init']=True
+            for i in range(first,last+1):
+                p=plan[i];delta=K[i]-K[i+1] if i<last else None
+                assert delta in (None,0,1)
+                p['fmode']='final' if i==last else 'drop' if delta else 'same'
+        flags=sum(int(p['init'])+int(p['fmode'] in ('same','drop')) for p in plan)
+        # Original part1 envelope includes E exactly once. Allocate only
+        # eligible carries, from the end; no legacy KEEP setting changes.
+        room=2236-1-flags
+        budget=min(room,getattr(self,'jump4_carry_limit',room))
+        assert budget>=0
+        for p in reversed(plan):
+            p['carry']=min(budget,max((p['k'] if p['high'] else p['w'])-1,0));budget-=p['carry']
+        for p in plan:
+            p['scratch']=(p['w']-p['k']+1 if p['high'] else 0)+int(bool(p['fmode']) and p['fmode']!='same')
+            if p['init']:p['scratch']=max(p['scratch'],max(0,p['w']-p['k']-2))
+        return plan
+
+    def _jump4_junk_size(self):
+        return 1+sum(p['carry']+int(p['init'])+int(p['fmode'] in ('same','drop')) for p in self._jump4_eager_plan())
+
+    def _jump4_pool_sizes(self):
+        n=self.mod.n;tail=self.pass_tail_width
+        u_lent=min(tail,n-tail)
+        return u_lent,tail-u_lent,4*self.iters-(n-tail)-u_lent
+
+    def _jump4_coded_tape(self,pool):
+        return list(pool[self._jump4_pool_sizes()[1]:])
+
+    def _jump4_euclid_pass(self,U,pool,junk,H):
+        """Zero-only shrinking tape pool (ours, from PR #2; PR #32 carries it), raw4T and explicit E/flag/carry junk.
+
+        Built on jtaroreh/lowt-climb (PR #32). Same recorded aliases are inverted;
+        retained junk survives the full coefficient pass and is never scratch.
+        """
+        C,n=self.C,self.mod.n
+        lent,remaining,external=self._jump4_pool_sizes()
+        if not self.jump4 or len(U)!=n or len(pool)!=n+external or len(junk)!=self._jump4_junk_size() or len(H)!=3:
+            raise ValueError('invalid Jump4 raw-pool shape')
+        V,available,G=list(pool[:n]),list(pool[n:]),[]
+        E=junk[:1];loans=set(U[n-lent:]);used=1;flag_index=None
+        C.apply(self._jump4_initial_strip(0),[V,H,[]])
+        for t,p in enumerate(self._jump4_eager_plan()):
+            w=p['w']
+            if len(V)!=w or len(available)<4:raise ValueError('Jump4 pool exhausted before cell')
+            cell,available=available[:4],available[4:]
+            if p['init']:flag_index=used;used+=1
+            cstart=used;carry=junk[used:used+p['carry']];used+=p['carry']
+            slot_index=used;slot=junk[used:used+int(p['fmode'] in ('same','drop'))];used+=len(slot)
+            flag=[junk[flag_index]] if p['fmode'] else []
+            scratch=(available+junk[used:])[:p['scratch']]
+            assert len(scratch)==p['scratch'],('Jump4 clean scratch shortage',t,p,len(available),len(junk)-used)
+            u=U[:w];regs=[u,V,E,cell,[]]
+            k=p['k'] if p['fmode'] else None
+            if p['carry'] or k is not None:
+                regs += [carry,flag,slot,scratch]
+            C.apply(self._jump4_step(w,first=t==0,carry=p['carry'],kappa=k,high=p['high'],fmode=p['fmode'],init=p['init']),regs)
+            U[:w]=u;G.extend(cell);junk[cstart:cstart+p['carry']]=carry
+            if p['fmode']:junk[flag_index]=flag[0]
+            if slot:junk[slot_index]=slot[0]
+            nw=self.widths[t+1] if t+1<self.iters else self.pass_tail_width
+            available.extend(V[nw:]);V[:]=V[:nw]
+            available.extend(reversed([u for u in U[nw:w] if u in loans]))
+        assert used==len(junk) and not available and len(V)==self.pass_tail_width
+        U[:]=U[:n-lent]+V[:lent];pool[:]=V[lent:]+G;junk[:1]=E
+        assert len(pool)==n+external and len(G)==4*self.iters
+
+    def _jump4_body(self,Xr,Yr):
+        C,q,n=self.C,self.mod.q,self.mod.n
+        U=C.alloc(n);load_const(C,U,q)
+        pool=list(Xr)+C.alloc(self._jump4_pool_sizes()[2])
+        junk,H=C.alloc(self._jump4_junk_size()),C.alloc(3)
+        producer=C.run(self._jump4_euclid_pass,[U,pool,junk,H])
+        lent=self._jump4_pool_sizes()[1]
+        G=self._jump4_coded_tape(pool)
+        C.free(pool[:lent]);C.x(U[0]);S=U
+        self._jump4_bezout_pass(G,H,Yr,S)
+        pool[lent:]=G
+        C.x(Yr[0]);pool[:lent]=C.alloc(lent)
+        C.apply(producer,[Yr,pool,junk,H],inverse=True)
+        load_const(C,Yr,q)
+        Xr[:]=pool[:n]
+        C.free(Yr+pool[n:]+junk+H)
+        Yr[:]=S
+
     def __init__(self, C, mod):
+        self.jump4=bool(model.JUMP4)
         self.C, self.mod = C, mod
         q, n = mod.q, mod.n
         self.iters = tick_bound(q)
@@ -1411,6 +1739,10 @@ class DialogMultiplier:
     def split(self, Xr, Yr):
         """Whether the body splits into two blocks around cell 0's zero test, so that apply can
         take a test. It does not on a pass with no cell 0 tick."""
+        if bool(model.JUMP4)!=self.jump4:
+            raise ValueError('multiplier mode changed after construction')
+        if self.jump4:
+            return False
         if self._halves is None:
             self._cutting, self._test = True, None
             self._halves = self.C.record_cut(self._body, [Xr, Yr]) or ()
@@ -1433,6 +1765,17 @@ class DialogMultiplier:
         the second block never touches, so it costs no wire: a forward pass hands it to the test
         clean and returns it; an inverse pass takes it as flag, and the test must clear it."""
         C = self.C
+        if bool(model.JUMP4)!=self.jump4:
+            raise ValueError('multiplier mode changed after construction')
+        if self.jump4:
+            if test is not None or flag is not None:
+                raise ValueError('Jump4 does not support legacy kernel cuts')
+            if len(Xr)!=self.mod.n or len(Yr)!=self.mod.n or len(set(Xr+Yr))!=2*self.mod.n:
+                raise ValueError('invalid or aliased Jump4 multiplier operands')
+            if self.block is None:
+                self.block=C.record(self._jump4_body,[Xr,Yr])
+            C.apply(self.block,[Xr,Yr],inverse)
+            return None
         if test is None:
             if self.block is None:
                 self.block = C.record(self._body, [Xr, Yr])
