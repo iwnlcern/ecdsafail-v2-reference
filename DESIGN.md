@@ -135,3 +135,7 @@ Both rows run inside the full acceptance gate as well as their standalone per-co
 The inherited check_hier.py fails on ab-godder's PR #29 source at 61e0c50: hierarchical and flat builds order and label gates differently.
 The committed receipts are preserved. Both builds are checked against the specification separately on every promised toy input; full gates check the hierarchical emission.
 The model's zero-caller convention is distinct from M's standalone nonzero-x promise; nonzero M entries rely on the kernel flags.
+
+
+## A width cut at secp256k1 (ab-godder, PR #28)
+This is the width schedule from e1b32bb, merged as 5ca6779. ab-godder proved the cut through Euclid groups of total slack below two and searched 53,613,560,142 nodes, yielding three candidates and no breaks. We cite that original proof and run; the full search is not rerun here. SECP256K1_CUT_LAST defaults to 168; -1 restores the generic schedule and the preceding emission. Other primes retain the generic schedule. The isolated schedule assertion and model, flat and hierarchical toy checks run on this commit.

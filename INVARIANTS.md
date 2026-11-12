@@ -95,3 +95,5 @@ Standalone M is checked only on x in [1,q), with exactly six x=0 component lanes
 The constant-tree filter adds I2.filter and I2.filter-small to the existing gate census.
 Their normal blocks must preserve every output and clean scratch, and the wrong-zero controls must be detected.
 LIVE_FILTER off must reproduce the preceding emitted bytes; the full gate retains I2.secp-flat and pending I7.charge.
+
+The secp256k1 width cut is ab-godder’s PR #28 argument and schedule. The standalone multiplier promise and zero-caller limitation remain. Setting SECP256K1_CUT_LAST=-1 must restore the preceding emission exactly.
